@@ -1,0 +1,25 @@
+{
+  "name": "@sage/instance-contracts",
+  "version": "0.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/tests/*.test.js",
+    "lint": "echo 'Lint instance-contracts'",
+    "clean": "rm -rf dist dist-test"
+  },
+  "dependencies": {
+    "@sage/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

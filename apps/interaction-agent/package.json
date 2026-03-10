@@ -1,0 +1,10 @@
+{
+  "name": "@sage/interaction-agent",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Build interaction-agent'",
+    "dev": "echo 'Dev interaction-agent'",
+    "lint": "echo 'Lint interaction-agent'",
+    "clean": "rm -rf dist"
+  }
+}

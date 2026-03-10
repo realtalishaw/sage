@@ -1,0 +1,10 @@
+{
+  "name": "@sage/messaging-gateway",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Build messaging-gateway'",
+    "dev": "echo 'Dev messaging-gateway'",
+    "lint": "echo 'Lint messaging-gateway'",
+    "clean": "rm -rf dist"
+  }
+}

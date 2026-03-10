@@ -1,0 +1,10 @@
+{
+  "name": "@sage/provisioning-service",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Build provisioning-service'",
+    "dev": "echo 'Dev provisioning-service'",
+    "lint": "echo 'Lint provisioning-service'",
+    "clean": "rm -rf dist"
+  }
+}

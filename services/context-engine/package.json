@@ -1,0 +1,18 @@
+{
+  "name": "@sage/context-engine",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch && echo 'Run context-engine'",
+    "lint": "echo 'Lint context-engine'",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@sage/shared-types": "workspace:*",
+    "@sage/db": "workspace:*",
+    "@sage/queue": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

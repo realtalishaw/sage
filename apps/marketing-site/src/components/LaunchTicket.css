@@ -1,0 +1,214 @@
+.launch-ticket-app {
+  --ticket-o: 0;
+  --ticket-p: 100%;
+  --ticket-h: 50%;
+  --ticket-r: 0deg;
+  --ticket-logopng: url(https://assets.codepen.io/13471/threads.png);
+  --ticket-shape: url(https://assets.codepen.io/13471/ticket-shape.svg);
+  --ticket-ar: 20 / 30;
+  --ticket-gutter: 8%;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  perspective: 1200px;
+}
+
+.launch-ticket {
+  display: grid;
+  aspect-ratio: var(--ticket-ar);
+  transform: translate3d(0, 0, 0.1px) rotateY(var(--ticket-r));
+  transform-style: preserve-3d;
+}
+
+.launch-ticket--page {
+  width: min(100%, 380px);
+}
+
+.launch-ticket--intro {
+  width: min(82vw, 350px);
+}
+
+@media (min-width: 768px) {
+  .launch-ticket--intro {
+    width: min(100%, 390px);
+  }
+}
+
+.launch-ticket__front,
+.launch-ticket__back {
+  grid-area: 1 / 1;
+  position: relative;
+  display: grid;
+  border-radius: 15px;
+  background-color: #6e6176;
+  background-image: radial-gradient(circle at var(--ticket-p) 50%, #fff 10%, transparent 100%);
+  background-size: 100% 220vh;
+  background-position: center;
+  background-repeat: no-repeat;
+  backface-visibility: visible;
+  transform: translateZ(1px);
+  transform-style: preserve-3d;
+  -webkit-mask-image: var(--ticket-shape);
+  mask-image: var(--ticket-shape);
+  -webkit-mask-size: cover;
+  mask-size: cover;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.launch-ticket__front {
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+.launch-ticket__front::after,
+.launch-ticket__back::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    -70deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.5) 40.5%,
+    transparent
+  );
+  background-size: 200% 200%;
+  background-position: var(--ticket-p) var(--ticket-p);
+  opacity: calc(var(--ticket-o) + 0.5);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.launch-ticket__holo {
+  position: absolute;
+  inset: 0;
+  border-radius: 15px;
+  display: block;
+  --space: 5%;
+  --red: hsl(0, 100%, 50%);
+  --orange: hsl(30, 100%, 50%);
+  --yellow: hsl(60, 100%, 50%);
+  --green: hsl(120, 100%, 50%);
+  --cyan: hsl(180, 100%, 50%);
+  --blue: hsl(222, 100%, 50%);
+  --purple: hsl(258, 100%, 50%);
+  --magenta: hsl(300, 100%, 50%);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--red) 0%,
+    var(--orange) calc(var(--space) * 1),
+    var(--yellow) calc(var(--space) * 2),
+    var(--green) calc(var(--space) * 3),
+    var(--cyan) calc(var(--space) * 4),
+    var(--blue) calc(var(--space) * 5),
+    var(--purple) calc(var(--space) * 6),
+    var(--magenta) calc(var(--space) * 7),
+    var(--red) calc(var(--space) * 8)
+  );
+  background-size: 150vw 150vh;
+  background-position: var(--ticket-h) var(--ticket-h);
+  background-repeat: no-repeat;
+  -webkit-mask-image: var(--ticket-logopng);
+  mask-image: var(--ticket-logopng);
+  -webkit-mask-size: 4% 4%;
+  mask-size: 4% 4%;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  mix-blend-mode: plus-lighter;
+  filter: brightness(0.9) contrast(0.7) saturate(2);
+  opacity: var(--ticket-o);
+}
+
+.launch-ticket__logo,
+.launch-ticket__data {
+  position: relative;
+  z-index: 2;
+}
+
+.launch-ticket__logo {
+  width: 50%;
+  place-self: center;
+  transform: translateY(-14%);
+}
+
+.launch-ticket__back .launch-ticket__logo {
+  position: absolute;
+  right: var(--ticket-gutter);
+  top: 13%;
+  width: 16%;
+  image-rendering: crisp-edges;
+}
+
+.launch-ticket__data {
+  margin: 14% var(--ticket-gutter);
+  color: black;
+  font-family: "Roboto Mono", monospace;
+  text-transform: uppercase;
+}
+
+.launch-ticket__data h3 {
+  margin: 0.2em 0;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.launch-ticket__data p {
+  margin: 0.2em 0 1em;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.launch-ticket__qr {
+  display: block;
+  max-width: 30%;
+  image-rendering: crisp-edges;
+}
+
+.launch-ticket__divider {
+  position: absolute;
+  right: 0;
+  bottom: 2%;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  height: 18%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--ticket-gutter);
+  background-image:
+    repeating-linear-gradient(90deg, #fff0 0px, #fff0 8px, #0005 8px, #0005 16px),
+    radial-gradient(ellipse at center center, #fff0 10%, transparent 50%);
+  background-size: 100% 1.5px, 250% 1.5px;
+  background-repeat: no-repeat;
+  background-position: -4px top, var(--ticket-h) top;
+  background-blend-mode: overlay;
+  color: black;
+  font-family: "Roboto Mono", monospace;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.launch-ticket__username {
+  display: flex;
+  align-items: center;
+  font-family: "Heebo", sans-serif;
+  font-weight: 600;
+}
+
+.launch-ticket__profile {
+  width: 40px;
+  margin-right: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1.33px black;
+  image-rendering: crisp-edges;
+}
+
+.launch-ticket__verified {
+  width: 18px;
+  margin-left: 5px;
+}
+
+.launch-ticket__usernum {
+  font-size: 20px;
+}

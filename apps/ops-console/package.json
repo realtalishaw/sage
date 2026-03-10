@@ -1,0 +1,10 @@
+{
+  "name": "@sage/ops-console",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Build ops-console'",
+    "dev": "echo 'Dev ops-console'",
+    "lint": "echo 'Lint ops-console'",
+    "clean": "rm -rf dist .next"
+  }
+}

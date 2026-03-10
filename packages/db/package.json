@@ -1,0 +1,40 @@
+{
+  "name": "@sage/db",
+  "version": "0.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "echo 'Lint db'",
+    "clean": "rm -rf dist",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:migrate": "supabase migration new",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    "db:types": "supabase gen types typescript --local > src/types.ts"
+  },
+  "dependencies": {
+    "@sage/shared-types": "workspace:*",
+    "@supabase/supabase-js": "^2.49.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
