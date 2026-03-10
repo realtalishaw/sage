@@ -23,6 +23,8 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
 
 # Logs
 *.log
@@ -32,6 +34,7 @@ pnpm-debug.log*
 # Turbo
 .turbo/
 /apps/marketing-site/_flatten-backup/
+/forks/openclaw/
 
 # Testing
 coverage/
