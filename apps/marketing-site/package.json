@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "tsc -b && vite build --config vite.config.ts",
+    "build:prod": "vite build --config vite.config.ts",
     "lint": "eslint .",
     "preview": "vite preview --config vite.config.ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.17.14",
     "@sage/db": "workspace:*",
     "@supabase/supabase-js": "^2.49.2",
     "canvas-confetti": "^1.9.0",
@@ -20,12 +23,14 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.28.0",
-    "react-type-animation": "^3.2.0"
+    "react-type-animation": "^3.2.0",
+    "three": "^0.181.1"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
+    "@types/three": "^0.181.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
