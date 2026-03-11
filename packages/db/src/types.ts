@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      application_profiles: {
+        Row: {
+          avatar: Json
+          avatar_portrait_png: string | null
+          completed_at: string
+          created_at: string
+          final_stage: string
+          id: string
+          profile: Json
+          review: Json
+          transcript: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar: Json
+          avatar_portrait_png?: string | null
+          completed_at?: string
+          created_at?: string
+          final_stage?: string
+          id: string
+          profile: Json
+          review: Json
+          transcript?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar?: Json
+          avatar_portrait_png?: string | null
+          completed_at?: string
+          created_at?: string
+          final_stage?: string
+          id?: string
+          profile?: Json
+          review?: Json
+          transcript?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "application_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "application_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist_rankings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invite_codes: {
         Row: {
           claimed_at: string | null
