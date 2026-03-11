@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import type { BootstrapProfile, BootstrapReview } from "./groq-bootstrap";
+import type { RandomAvatarState } from "../avatar/random";
 
 /*
   This file is a browser-safe shim for the marketing site.
@@ -163,11 +165,61 @@ export async function getReferralStats(userId: string) {
 
 export function generateReferralLink(referralCode: string, baseUrl?: string): string {
   const base = baseUrl ?? window.location.origin;
-  return `${base}/activate?ref=${referralCode}`;
+  return `${base}/apply?ref=${referralCode}`;
 }
 
 export function parseReferralCodeFromUrl(url?: string): string | null {
   const urlToParse = url ?? window.location.href;
   const urlObject = new URL(urlToParse);
   return urlObject.searchParams.get("ref");
+}
+
+interface SaveApplicationProfileParams {
+  applicationId: string;
+  userId: string;
+  profile: BootstrapProfile;
+  review: BootstrapReview | null;
+  avatar: RandomAvatarState;
+  avatarPortraitPng: string | null;
+  transcript: Array<{ id: string; role: string; text: string }>;
+  finalStage: string;
+  completedAt: string;
+}
+
+export async function saveApplicationProfile(params: SaveApplicationProfileParams) {
+  const row = {
+    id: params.applicationId,
+    user_id: params.userId,
+    profile: params.profile,
+    review: params.review ?? {
+      aboutAgent: "",
+      aboutUser: "",
+      readinessNote: "",
+    },
+    avatar: params.avatar,
+    avatar_portrait_png: params.avatarPortraitPng,
+    transcript: params.transcript,
+    final_stage: params.finalStage,
+    completed_at: params.completedAt,
+  };
+
+  const { data, error } = await supabase
+    .from("application_profiles")
+    .upsert(row as never, {
+      onConflict: "id",
+    })
+    .select()
+    .single();
+
+  return { data, error };
+}
+
+export async function getApplicationProfile(applicationId: string) {
+  const { data, error } = await supabase
+    .from("application_profiles")
+    .select("id, profile, review, avatar, avatar_portrait_png, transcript, final_stage, completed_at")
+    .eq("id", applicationId)
+    .single();
+
+  return { data, error };
 }

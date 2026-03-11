@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import { Button } from "../components/Button";
 import LandingFooter from "../components/LandingFooter";
 import { setPageTitle } from "../lib/seo";
+import { supabase } from "../lib/supabase";
 
 export default function Feedback() {
   const [email, setEmail] = useState("");
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     /*
@@ -22,19 +24,31 @@ export default function Feedback() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
+    setError("");
 
-    /*
-      The original web page only simulated submission. We keep that behavior for
-      now so the page can ship visually without pretending there is a backend.
-    */
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('send-feedback', {
+        body: { email, feedback },
+      });
 
-    setIsSubmitted(true);
-    setIsSubmitting(false);
-    setEmail("");
-    setFeedback("");
+      if (functionError) {
+        throw functionError;
+      }
 
-    window.setTimeout(() => setIsSubmitted(false), 3000);
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to send feedback');
+      }
+
+      setIsSubmitted(true);
+      setEmail("");
+      setFeedback("");
+      window.setTimeout(() => setIsSubmitted(false), 5000);
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
+      setError(err instanceof Error ? err.message : 'something went wrong. please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -108,6 +122,12 @@ export default function Feedback() {
             {isSubmitted && (
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-4 text-center text-sm font-medium text-emerald-400">
                 thanks for your feedback! we'll be in touch soon.
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-6 py-4 text-center text-sm font-medium text-red-400">
+                {error}
               </div>
             )}
           </form>

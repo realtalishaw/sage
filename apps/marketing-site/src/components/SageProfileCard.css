@@ -1,0 +1,353 @@
+.sage-profile-card-container {
+  --pointer-x: 50%;
+  --pointer-y: 50%;
+  --pointer-from-center: 0;
+  --pointer-from-top: 0.5;
+  --pointer-from-left: 0.5;
+  --rotate-x: 0deg;
+  --rotate-y: 0deg;
+  --background-x: 50%;
+  --background-y: 50%;
+  --card-opacity: 0;
+  --sunpillar-1: hsl(2, 100%, 73%);
+  --sunpillar-2: hsl(53, 100%, 69%);
+  --sunpillar-3: hsl(93, 100%, 69%);
+  --sunpillar-4: hsl(176, 100%, 76%);
+  --sunpillar-5: hsl(228, 100%, 74%);
+  --sunpillar-6: hsl(283, 100%, 73%);
+
+  position: relative;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  perspective: 500px;
+  transform: translate3d(0, 0, 0.1px);
+  touch-action: none;
+}
+
+.sage-profile-card-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--pointer-x) var(--pointer-y),
+    rgba(125, 190, 255, 0.67) 0%,
+    transparent 50%
+  );
+  filter: blur(50px) saturate(1.1);
+  opacity: calc(0.8 * var(--card-opacity));
+  transition: opacity 200ms ease-out;
+}
+
+.sage-profile-card-container .sage-profile-card.active ~ ::before,
+.sage-profile-card.active {
+  --card-opacity: 1;
+}
+
+.sage-profile-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  height: 80svh;
+  max-height: 560px;
+  aspect-ratio: 0.718;
+  border-radius: 30px;
+  background: rgba(0, 0, 0, 0.9);
+  transform: translateZ(0) rotateX(0deg) rotateY(0deg);
+  transform-style: preserve-3d;
+  overflow: hidden;
+  box-shadow:
+    rgba(0, 0, 0, 0.8) calc((var(--pointer-from-left) * 10px) - 3px)
+    calc((var(--pointer-from-top) * 20px) - 6px) 20px -5px;
+  transition: transform 1s ease;
+  backface-visibility: hidden;
+}
+
+.sage-profile-card.active {
+  --card-opacity: 1;
+  transition: none;
+  transform: translateZ(0) rotateX(var(--rotate-y)) rotateY(var(--rotate-x));
+}
+
+@keyframes sage-holo-bg {
+  0% {
+    background-position: 0 var(--background-y), 0 0, center;
+  }
+  100% {
+    background-position: 0 var(--background-y), 90% 90%, center;
+  }
+}
+
+.sage-profile-card__inner {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(145deg, #2a2a2a 0%, #1a1a1a 100%);
+  background-color: #1f1f1f;
+  border-radius: 30px;
+  overflow: hidden;
+}
+
+.sage-profile-card__shine {
+  position: absolute;
+  inset: 0;
+  mask-image: url(/sage-icon.png);
+  mask-mode: luminance;
+  mask-repeat: repeat;
+  mask-size: 150%;
+  mask-position: top calc(200% - (var(--background-y) * 5)) left calc(100% - var(--background-x));
+  filter: brightness(0.66) contrast(1.33) saturate(0.33) opacity(0.5);
+  animation: sage-holo-bg 18s linear infinite;
+  animation-play-state: running;
+  mix-blend-mode: color-dodge;
+  transform: translate3d(0, 0, 1px);
+  overflow: hidden;
+  z-index: 3;
+  background: transparent;
+  background-size: cover;
+  background-position: center;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--sunpillar-1) 5%,
+      var(--sunpillar-2) 10%,
+      var(--sunpillar-3) 15%,
+      var(--sunpillar-4) 20%,
+      var(--sunpillar-5) 25%,
+      var(--sunpillar-6) 30%,
+      var(--sunpillar-1) 35%
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      #0e152e 0%,
+      hsl(180, 10%, 60%) 3.8%,
+      hsl(180, 29%, 66%) 4.5%,
+      hsl(180, 10%, 60%) 5.2%,
+      #0e152e 10%,
+      #0e152e 12%
+    ),
+    radial-gradient(
+      farthest-corner circle at var(--pointer-x) var(--pointer-y),
+      hsla(0, 0%, 0%, 0.1) 12%,
+      hsla(0, 0%, 0%, 0.15) 20%,
+      hsla(0, 0%, 0%, 0.25) 120%
+    );
+  border-radius: 30px;
+  pointer-events: none;
+}
+
+.sage-profile-card__glare {
+  position: absolute;
+  inset: 0;
+  transform: translate3d(0, 0, 1.1px);
+  overflow: hidden;
+  background-image:
+    radial-gradient(
+      farthest-corner circle at var(--pointer-x) var(--pointer-y),
+      hsl(248, 25%, 80%) 12%,
+      hsla(207, 40%, 30%, 0.8) 90%
+    );
+  mix-blend-mode: overlay;
+  filter: brightness(0.8) contrast(1.2);
+  z-index: 4;
+  border-radius: 30px;
+  pointer-events: none;
+}
+
+.sage-profile-card__content {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  transform: translateZ(1px);
+  border-radius: 30px;
+  pointer-events: none;
+  backface-visibility: hidden;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sage-profile-card__avatar-container {
+  width: 70%;
+  max-width: 400px;
+  position: relative;
+  will-change: transform;
+  transition: transform 120ms ease-out;
+  transform:
+    translateX(calc((var(--pointer-from-left) - 0.5) * 6px))
+    translateY(calc((var(--pointer-from-top) - 0.5) * -6px))
+    translateZ(0)
+    scaleY(calc(1 + (var(--pointer-from-top) - 0.5) * 0.02))
+    scaleX(calc(1 + (var(--pointer-from-left) - 0.5) * 0.01));
+  backface-visibility: hidden;
+}
+
+.sage-profile-card__avatar {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+}
+
+.sage-profile-card__details {
+  position: absolute;
+  inset: 0;
+  max-height: 100%;
+  overflow: hidden;
+  text-align: center;
+  z-index: 15;
+  transform:
+    translate3d(
+      calc(var(--pointer-from-left) * -6px + 3px),
+      calc(var(--pointer-from-top) * -6px + 3px),
+      0.1px
+    );
+  mix-blend-mode: luminosity;
+  border-radius: 30px;
+  pointer-events: none;
+}
+
+.sage-profile-card__details-inner {
+  width: 100%;
+  position: absolute;
+  top: 3em;
+  display: flex;
+  flex-direction: column;
+}
+
+.sage-profile-card__name {
+  font-family: "Heebo", sans-serif;
+  font-size: min(5svh, 3em);
+  font-weight: 600;
+  margin: 0;
+  background-image: linear-gradient(to bottom, #fff, #6f6fbe);
+  background-size: 1em 1.5em;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  pointer-events: auto;
+}
+
+.sage-profile-card__handle {
+  font-family: "Heebo", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin: 0 auto;
+  width: min-content;
+  position: relative;
+  top: -12px;
+  background-image: linear-gradient(to bottom, #fff, #4a4ac0);
+  background-size: 1em 1.5em;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  pointer-events: auto;
+}
+
+.sage-profile-card__footer {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: calc(30px - 20px + 6px);
+  padding: 12px 14px;
+  pointer-events: auto;
+}
+
+.sage-profile-card__footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sage-profile-card__mini-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  background: #0b0b0c;
+}
+
+.sage-profile-card__mini-avatar img,
+.sage-profile-card__mini-avatar canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+}
+
+.sage-profile-card__footer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sage-profile-card__member-badge {
+  font-family: "Roboto Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1;
+}
+
+.sage-profile-card__launch-date {
+  font-family: "Roboto Mono", monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1;
+}
+
+@media (max-width: 767px) {
+  .sage-profile-card {
+    width: min(82vw, 350px);
+  }
+
+  .sage-profile-card__name {
+    font-size: min(4svh, 2.5em);
+  }
+
+  .sage-profile-card__handle {
+    font-size: 14px;
+  }
+
+  .sage-profile-card__footer {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    padding: 10px 12px;
+  }
+
+  .sage-profile-card__mini-avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sage-profile-card__member-badge,
+  .sage-profile-card__launch-date {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 768px) {
+  .sage-profile-card {
+    width: min(100%, 420px);
+  }
+}

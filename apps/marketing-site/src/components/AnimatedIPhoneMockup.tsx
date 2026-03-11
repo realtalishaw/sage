@@ -171,7 +171,13 @@ export default function AnimatedIPhoneMockup({
 
         setShowInputTyping(false);
         setCurrentTypingText('');
-        setDisplayedMessages(prev => [...prev, currentMessage]);
+        setDisplayedMessages(prev => {
+          // Prevent duplicate messages
+          if (prev.some(m => m.id === currentMessage.id)) {
+            return prev;
+          }
+          return [...prev, currentMessage];
+        });
 
         if (currentMessage.status) {
           await new Promise(resolve => setTimeout(resolve, 800));
@@ -196,7 +202,13 @@ export default function AnimatedIPhoneMockup({
         await new Promise(resolve => setTimeout(resolve, typingIndicatorDuration));
 
         setIsTyping(false);
-        setDisplayedMessages(prev => [...prev, currentMessage]);
+        setDisplayedMessages(prev => {
+          // Prevent duplicate messages
+          if (prev.some(m => m.id === currentMessage.id)) {
+            return prev;
+          }
+          return [...prev, currentMessage];
+        });
 
         const readingTime = Math.min(4000, 2000 + text.length * 30);
         await new Promise(resolve => setTimeout(resolve, readingTime));

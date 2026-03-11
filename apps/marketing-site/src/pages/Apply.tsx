@@ -14,6 +14,7 @@ const inputClasses =
   "w-full h-11 rounded-xl border border-white/10 bg-[#303030] px-4 text-sm text-white placeholder:text-white/25 transition-all focus:bg-[#3a3a3a] focus:border-white/30 focus:outline-none";
 const otpInputClasses =
   "flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#303030] text-center text-base text-white transition-all focus:border-white/30 focus:bg-[#3a3a3a] focus:outline-none";
+const APPLICATION_PROFILE_SEED_STORAGE_KEY = "sage:application-profile-seed";
 
 export default function Apply() {
   const navigate = useNavigate();
@@ -27,13 +28,37 @@ export default function Apply() {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const verificationRefs = useRef<Array<HTMLInputElement | null>>([]);
 
+  const persistApplicationProfileSeed = () => {
+    /*
+      The application route starts with a more personalized bootstrap opener. A
+      lightweight session seed lets that next page greet the applicant by name
+      without waiting for another round-trip or extra query.
+    */
+    sessionStorage.setItem(
+      APPLICATION_PROFILE_SEED_STORAGE_KEY,
+      JSON.stringify({
+        firstName,
+        lastName,
+        fullName: `${firstName} ${lastName}`.trim(),
+      }),
+    );
+  };
+
   useEffect(() => {
     setPageTitle(step === "verify" ? "Verify" : "Request Invite");
 
     // Check for referral code in URL
-    const ref = parseReferralCodeFromUrl();
-    if (ref) {
-      setReferralCode(ref);
+    const refFromUrl = parseReferralCodeFromUrl();
+    if (refFromUrl) {
+      setReferralCode(refFromUrl);
+      // Save to localStorage so it persists through verification
+      localStorage.setItem('sage_referral_code', refFromUrl);
+    } else {
+      // Try to load from localStorage if not in URL
+      const savedRef = localStorage.getItem('sage_referral_code');
+      if (savedRef) {
+        setReferralCode(savedRef);
+      }
     }
   }, [step]);
 
@@ -109,16 +134,34 @@ export default function Apply() {
       });
 
       if (profileError) {
-        setError(profileError.message);
+        // Check if profile already exists (duplicate key error)
+        const isDuplicate =
+          profileError.code === '23505' ||
+          profileError.message?.toLowerCase().includes('duplicate') ||
+          profileError.message?.toLowerCase().includes('already exists');
+
+        if (isDuplicate) {
+          // Profile already exists, redirect to application page
+          sessionStorage.removeItem('pendingWaitlistSignup');
+          localStorage.removeItem('sage_referral_code');
+          persistApplicationProfileSeed();
+          navigate('/apply/application');
+          return;
+        }
+
+        // Show other errors
+        setError(profileError.message || "an error occurred while creating your profile. please try again.");
         setLoading(false);
         return;
       }
 
-      // Clear session storage
+      // Clear session storage and referral code
       sessionStorage.removeItem('pendingWaitlistSignup');
+      localStorage.removeItem('sage_referral_code');
+      persistApplicationProfileSeed();
 
-      // Navigate to success page with user ID
-      navigate(`/apply/success/${authData.user.id}`);
+      // Navigate to application page
+      navigate('/apply/application');
     } catch (err) {
       setError(err instanceof Error ? err.message : "something went wrong. please try again.");
       setLoading(false);
@@ -224,6 +267,12 @@ export default function Apply() {
                 ))}
               </div>
             </div>
+
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                <p className="text-red-400 text-xs font-medium">{error}</p>
+              </div>
+            )}
 
             <div>
               <Button

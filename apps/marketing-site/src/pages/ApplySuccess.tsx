@@ -4,20 +4,22 @@ import { Copy } from "lucide-react";
 import confetti from "canvas-confetti";
 import { setPageTitle } from "../lib/seo";
 import { Button } from "../components/Button";
-import { LaunchInviteIntro } from "../components/LaunchInviteIntro";
 import { ShareModal } from "../components/ShareModal";
-import { LaunchTicket } from "../components/LaunchTicket";
-import { useLaunchTicketMotion } from "../components/useLaunchTicketMotion";
+import { SageProfileCard } from "../components/SageProfileCard";
+import { LaunchCountdown } from "../components/LaunchCountdown";
+import { useSageProfileCardMotion } from "../components/useSageProfileCardMotion";
 import { useAuth, useReferrals } from "../hooks";
+import { getApplicationProfile } from "../lib/browser-db";
+import { buildSageAnnualCheckoutLink } from "../lib/stripe";
 import { generateReferralLink } from "@sage/db";
+import type { RandomAvatarState } from "../avatar/random";
 
 const shellClasses =
   "relative min-h-screen overflow-hidden bg-[#0B0B0C] px-5 py-8 text-[rgba(255,255,255,0.94)] md:py-10 lg:px-8 lg:py-6";
-
-const INTRO_TEST_MODE = true;
+const APPROVED_APPLICATION_STORAGE_KEY_PREFIX = "sage-bootstrap-review:";
 
 const milestones = [
-  { count: 3, reward: "move up in line" },
+  { count: 3, reward: "$50 account credit" },
   { count: 5, reward: "launch day access guaranteed" },
   { count: 10, reward: "1 month free" },
   { count: 25, reward: "50% off one year" },
@@ -25,66 +27,46 @@ const milestones = [
   { count: 1000, reward: "free for life" },
 ];
 
-interface IntroGate {
-  shouldPlayIntro: boolean;
-  introComplete: boolean;
-  prefersReducedMotion: boolean;
+interface ApprovedApplicationSummary {
+  avatarPortraitPng: string | null;
+  sageName: string;
+  avatarState: RandomAvatarState | null;
 }
 
 function hashSeed(input: string) {
   return Array.from(input).reduce((acc, char) => acc + char.charCodeAt(0), 0);
 }
 
-function getInviteIntroStorageKey(applicationId: string) {
-  return `sage_invite_intro_seen:${applicationId}`;
-}
-
-function resolveIntroGate(applicationId?: string): IntroGate {
-  const prefersReducedMotion =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  if (INTRO_TEST_MODE && !prefersReducedMotion) {
-    return {
-      shouldPlayIntro: true,
-      introComplete: false,
-      prefersReducedMotion,
-    };
-  }
-
-  if (!applicationId || prefersReducedMotion) {
-    return {
-      shouldPlayIntro: false,
-      introComplete: true,
-      prefersReducedMotion,
-    };
+function loadApprovedApplicationSummary(
+  applicationId?: string,
+): ApprovedApplicationSummary | null {
+  if (!applicationId) {
+    return null;
   }
 
   try {
-    const storageKey = getInviteIntroStorageKey(applicationId);
-    const hasSeenIntro = window.localStorage.getItem(storageKey);
+    const stored = window.localStorage.getItem(
+      `${APPROVED_APPLICATION_STORAGE_KEY_PREFIX}${applicationId}`,
+    );
 
-    if (hasSeenIntro) {
-      return {
-        shouldPlayIntro: false,
-        introComplete: true,
-        prefersReducedMotion,
-      };
+    if (!stored) {
+      return null;
     }
 
-    window.localStorage.setItem(storageKey, new Date().toISOString());
+    const parsed = JSON.parse(stored) as {
+      avatarPortraitPng?: string | null;
+      profile?: { agentName?: string };
+      avatar?: RandomAvatarState;
+    };
+    const sageName = parsed.profile?.agentName?.trim() || "sage concierge";
 
     return {
-      shouldPlayIntro: true,
-      introComplete: false,
-      prefersReducedMotion,
+      avatarPortraitPng: parsed.avatarPortraitPng ?? null,
+      sageName,
+      avatarState: parsed.avatar ?? null,
     };
   } catch {
-    return {
-      shouldPlayIntro: false,
-      introComplete: true,
-      prefersReducedMotion,
-    };
+    return null;
   }
 }
 
@@ -156,31 +138,73 @@ export default function ApplySuccess() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  const [introGate, setIntroGate] = useState<IntroGate>(() => resolveIntroGate(applicationId));
   const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const confettiControllerRef = useRef<ReturnType<typeof createLaunchConfetti> | null>(null);
   const mainPageRef = useRef<HTMLDivElement | null>(null);
   const ticketAppRef = useRef<HTMLDivElement | null>(null);
-  const ticketRef = useRef<HTMLElement | null>(null);
-  const didMountRef = useRef(false);
+  const ticketRef = useRef<HTMLDivElement | null>(null);
   const seed = hashSeed(applicationId || "sage");
-
-  const { shouldPlayIntro, introComplete, prefersReducedMotion } = introGate;
+  const approvedApplicationSummary = useMemo(
+    () => loadApprovedApplicationSummary(applicationId),
+    [applicationId],
+  );
+  const [dbApprovedSummary, setDbApprovedSummary] = useState<ApprovedApplicationSummary | null>(null);
+  const annualCheckoutUrl = useMemo(
+    () =>
+      buildSageAnnualCheckoutLink({
+        applicationId,
+        userEmail: user?.email ?? null,
+        userId: user?.id ?? null,
+      }),
+    [applicationId, user?.email, user?.id],
+  );
 
   useEffect(() => {
     setPageTitle("You're In");
   }, []);
 
+  useEffect(() => {
+    if (!applicationId) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void (async () => {
+      const { data } = await getApplicationProfile(applicationId);
+      if (isCancelled || !data) {
+        return;
+      }
+
+      const nextName =
+        typeof data.profile === "object" &&
+        data.profile &&
+        "agentName" in data.profile &&
+        typeof data.profile.agentName === "string"
+          ? data.profile.agentName
+          : "sage concierge";
+
+      setDbApprovedSummary({
+        avatarPortraitPng: typeof data.avatar_portrait_png === "string" ? data.avatar_portrait_png : null,
+        sageName: nextName,
+        avatarState:
+          data.avatar && typeof data.avatar === "object"
+            ? (data.avatar as unknown as RandomAvatarState)
+            : null,
+      });
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [applicationId]);
+
   // Use real referral data instead of mock data
   const orderInLine = useMemo(() => 600 + (seed % 2400), [seed]); // TODO: Replace with real waitlist position
   const referralCount = useMemo(() => totalReferrals, [totalReferrals]);
   const referralLink = useMemo(
-    () => referralCode ? generateReferralLink(referralCode) : `${window.location.origin}/activate?ref=${applicationId || "sage"}`,
+    () => referralCode ? generateReferralLink(referralCode) : `${window.location.origin}/apply?ref=${applicationId || "sage"}`,
     [referralCode, applicationId]
-  );
-  const inviteLabel = useMemo(
-    () => `${referralCount} invite${referralCount === 1 ? "" : "s"}`,
-    [referralCount]
   );
   const nextMilestone = useMemo(
     () => milestones.find((milestone) => referralCount < milestone.count) ?? null,
@@ -195,25 +219,25 @@ export default function ApplySuccess() {
       return "you've unlocked every referral reward. now it's just about how far you want to move up.";
     }
 
-    return `${inviteLabel} so far. ${invitesUntilNextReward} more invite${
-      invitesUntilNextReward === 1 ? "" : "s"
-    } until ${nextMilestone.reward}.`;
-  }, [inviteLabel, invitesUntilNextReward, nextMilestone]);
-  const mainPageHidden = shouldPlayIntro && !introComplete;
+    const inviteWord = invitesUntilNextReward === 1 ? "invite" : "invites";
 
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
+    // Different motivational copy based on proximity to goal
+    if (invitesUntilNextReward === 1) {
+      return `just 1 more invite until ${nextMilestone.reward}!`;
     }
 
-    setIntroGate(resolveIntroGate(applicationId));
-  }, [applicationId]);
+    if (invitesUntilNextReward <= 3) {
+      return `you're only ${invitesUntilNextReward} ${inviteWord} away from ${nextMilestone.reward}!`;
+    }
+
+    // Show progress fraction for larger gaps
+    return `${referralCount}/${nextMilestone.count} ${inviteWord} — only ${invitesUntilNextReward} more until ${nextMilestone.reward}!`;
+  }, [referralCount, invitesUntilNextReward, nextMilestone]);
 
   useEffect(() => {
     const canvas = confettiCanvasRef.current;
 
-    if (!canvas || prefersReducedMotion) {
+    if (!canvas) {
       confettiControllerRef.current = null;
       return;
     }
@@ -221,16 +245,21 @@ export default function ApplySuccess() {
     const controller = createLaunchConfetti(canvas);
     confettiControllerRef.current = controller;
 
+    // Fire confetti on mount
+    setTimeout(() => {
+      controller.firePrimary();
+    }, 500);
+
     return () => {
       controller.reset();
       confettiControllerRef.current = null;
     };
-  }, [prefersReducedMotion]);
-  useLaunchTicketMotion({
+  }, []);
+
+  useSageProfileCardMotion({
     appRef: ticketAppRef,
-    ticketRef,
-    enabled: introComplete,
-    pauseOnHover: true,
+    cardRef: ticketRef,
+    enabled: true,
   });
 
   useEffect(() => {
@@ -238,13 +267,6 @@ export default function ApplySuccess() {
     const timeoutId = window.setTimeout(() => setCopied(false), 1600);
     return () => window.clearTimeout(timeoutId);
   }, [copied]);
-
-  const handleIntroComplete = () => {
-    setIntroGate((current) => ({
-      ...current,
-      introComplete: true,
-    }));
-  };
 
   const handleCopyLink = async () => {
     try {
@@ -260,7 +282,7 @@ export default function ApplySuccess() {
     setError("");
 
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 500));
+      window.open(annualCheckoutUrl, "_blank", "noopener,noreferrer");
     } catch {
       setError("something went wrong. please try again.");
     } finally {
@@ -284,7 +306,6 @@ export default function ApplySuccess() {
       <div
         ref={mainPageRef}
         className="relative z-30 mx-auto max-w-7xl"
-        style={mainPageHidden ? { opacity: 0, transform: "translateY(12px)", pointerEvents: "none" } : undefined}
       >
         <div className="grid gap-10 lg:h-[calc(100vh-3rem)] lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] lg:items-center lg:gap-10">
           <section className="order-2 max-w-[520px] lowercase lg:order-1 lg:self-center">
@@ -364,15 +385,19 @@ export default function ApplySuccess() {
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="space-y-6 pt-6">
                 <Button
                   variant="primary"
-                  className="h-11 px-6"
+                  className="h-11 w-full px-6"
                   onClick={handleAnnualCheckout}
                   disabled={loading}
                 >
-                  {loading ? "processing..." : "buy immediate access for $997/year"}
+                  {loading
+                    ? "processing..."
+                    : "buy sage annual for $997 and skip the waitlist"}
                 </Button>
+
+                <LaunchCountdown />
               </div>
             </div>
 
@@ -385,11 +410,14 @@ export default function ApplySuccess() {
 
           <section className="order-1 flex flex-col items-center gap-4 lg:order-2 lg:items-end lg:justify-center">
             <div className="flex w-full justify-center lg:justify-end">
-              <LaunchTicket
+              <SageProfileCard
                 appRef={ticketAppRef}
-                ticketRef={ticketRef}
+                cardRef={ticketRef}
                 orderInLine={orderInLine}
-                size="page"
+                sageName={dbApprovedSummary?.sageName ?? approvedApplicationSummary?.sageName}
+                avatarImageSrc={
+                  dbApprovedSummary?.avatarPortraitPng ?? approvedApplicationSummary?.avatarPortraitPng
+                }
               />
             </div>
 
@@ -397,16 +425,6 @@ export default function ApplySuccess() {
         </div>
       </div>
 
-      {shouldPlayIntro && !introComplete && (
-        <LaunchInviteIntro
-          orderInLine={orderInLine}
-          mainPageRef={mainPageRef}
-          finalTicketRef={ticketRef}
-          onComplete={handleIntroComplete}
-          firePrimaryConfetti={() => confettiControllerRef.current?.firePrimary()}
-          fireSecondaryConfetti={() => confettiControllerRef.current?.fireSecondary()}
-        />
-      )}
     </div>
   );
 }
