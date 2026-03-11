@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '../../../../packages/db/src/types';
+import type { Database } from '@sage/db/types';
 
 /*
   The marketing site uses the same generated Supabase schema types as the shared
