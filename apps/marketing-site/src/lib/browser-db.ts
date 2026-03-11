@@ -214,6 +214,66 @@ export async function saveApplicationProfile(params: SaveApplicationProfileParam
   return { data, error };
 }
 
+/**
+ * Create or update initial waitlist application profile with random avatar
+ */
+export async function createOrUpdateWaitlistProfile(params: {
+  userId: string;
+  agentName: string;
+  avatarState: RandomAvatarState;
+}) {
+  const row = {
+    id: params.userId, // Use userId as the application_profile id for waitlist
+    user_id: params.userId,
+    profile: {
+      agentName: params.agentName,
+      agentNature: null,
+      agentVibe: null,
+      agentEmoji: null,
+      userName: null,
+      preferredAddress: null,
+      timezone: null,
+      notes: [],
+      values: [],
+      behaviorPreferences: [],
+      boundaries: [],
+      reachPreference: null,
+    },
+    review: {
+      aboutAgent: "",
+      aboutUser: "",
+      readinessNote: "",
+    },
+    avatar: params.avatarState,
+    avatar_portrait_png: null,
+    transcript: [],
+    final_stage: "waitlist",
+    completed_at: new Date().toISOString(),
+  };
+
+  console.log('[createOrUpdateWaitlistProfile] Upserting application profile:', {
+    userId: params.userId,
+    agentName: params.agentName,
+    hasAvatar: !!params.avatarState,
+  });
+
+  const { data, error } = await supabase
+    .from("application_profiles")
+    .upsert(row as never, {
+      onConflict: "id",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[createOrUpdateWaitlistProfile] Error:', error);
+  } else {
+    console.log('[createOrUpdateWaitlistProfile] Success:', data);
+  }
+
+  return { data, error };
+}
+
 export async function getApplicationProfile(applicationId: string) {
   const { data, error } = await supabase
     .from("application_profiles")

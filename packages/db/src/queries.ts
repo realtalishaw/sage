@@ -125,13 +125,37 @@ export async function getUsedInviteCodesCount(userId: string) {
  * Create a new user profile
  * Optionally associates with a referrer via referral code
  */
+// Random name generators for fun placeholder names
+const ADJECTIVES = [
+  'Cosmic', 'Stellar', 'Quantum', 'Digital', 'Cyber', 'Neon', 'Electric', 'Mystic',
+  'Solar', 'Lunar', 'Crystal', 'Velvet', 'Golden', 'Silver', 'Radiant', 'Ethereal',
+  'Infinite', 'Vivid', 'Prism', 'Aurora', 'Phoenix', 'Thunder', 'Starlight', 'Twilight'
+];
+
+const NOUNS = [
+  'Penguin', 'Dragon', 'Phoenix', 'Tiger', 'Falcon', 'Dolphin', 'Wolf', 'Eagle',
+  'Panda', 'Fox', 'Owl', 'Hawk', 'Raven', 'Bear', 'Lion', 'Lynx', 'Otter', 'Seal',
+  'Whale', 'Shark', 'Cobra', 'Viper', 'Condor', 'Crane', 'Swan', 'Gazelle'
+];
+
+function generateRandomName(): { firstName: string; lastName: string } {
+  const adjective = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+  const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
+  return { firstName: adjective, lastName: noun };
+}
+
 export async function createProfile(params: {
   userId: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
   phoneNumber: string;
   referredByCode?: string;
 }) {
+  // Generate random name if not provided
+  const { firstName, lastName } = params.firstName && params.lastName
+    ? { firstName: params.firstName, lastName: params.lastName }
+    : generateRandomName();
+
   // Look up referrer if code provided
   let referrerId: string | null = null;
   if (params.referredByCode) {
@@ -151,8 +175,8 @@ export async function createProfile(params: {
     .from('profiles')
     .insert({
       id: params.userId,
-      first_name: params.firstName,
-      last_name: params.lastName,
+      first_name: firstName,
+      last_name: lastName,
       phone_number: params.phoneNumber,
       referral_code: referralCode,
       referred_by: referrerId,

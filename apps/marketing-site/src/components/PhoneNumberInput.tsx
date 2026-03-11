@@ -73,11 +73,21 @@ export function PhoneNumberInput({
       <select
         value={countryCode}
         onChange={handleCountryChange}
-        className={`${inputBaseClasses} w-[110px] shrink-0 appearance-none bg-[#303030] pr-8`}
+        className={`${inputBaseClasses} w-[110px] shrink-0 appearance-none bg-[#303030] pr-8 cursor-pointer`}
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23999' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+          backgroundPosition: 'right 0.5rem center',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: '1.25rem 1.25rem',
+        }}
         aria-label="Country code"
       >
         {COUNTRY_CODES.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          <option
+            key={opt.value}
+            value={opt.value}
+            style={{ backgroundColor: '#303030', color: 'white' }}
+          >
             {opt.label}
           </option>
         ))}

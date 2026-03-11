@@ -5,6 +5,9 @@ import { Button } from "../components/Button";
 import { PhoneNumberInput } from "../components/PhoneNumberInput";
 import { supabase } from "../lib/supabase";
 import { createProfile, parseReferralCodeFromUrl } from "@sage/db";
+import { generateAiCofounderName } from "../lib/groq-name-generator";
+import { createOrUpdateWaitlistProfile } from "../lib/browser-db";
+import { createRandomAvatarState } from "../avatar/random";
 
 const shellClasses =
   "relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0B0B0C] px-6 py-16";
@@ -18,8 +21,6 @@ const APPLICATION_PROFILE_SEED_STORAGE_KEY = "sage:application-profile-seed";
 
 export default function Apply() {
   const navigate = useNavigate();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [verificationCode, setVerificationCode] = useState<string[]>(() => Array(6).fill(""));
   const [step, setStep] = useState<"form" | "verify">("form");
@@ -28,7 +29,7 @@ export default function Apply() {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const verificationRefs = useRef<Array<HTMLInputElement | null>>([]);
 
-  const persistApplicationProfileSeed = () => {
+  const persistApplicationProfileSeed = (firstName: string, lastName: string) => {
     /*
       The application route starts with a more personalized bootstrap opener. A
       lightweight session seed lets that next page greet the applicant by name
@@ -47,6 +48,16 @@ export default function Apply() {
   useEffect(() => {
     setPageTitle(step === "verify" ? "Verify" : "Request Invite");
 
+    // If user is already authenticated, redirect to their referrals page
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && step === "form") {
+        navigate(`/apply/id/${user.id}`);
+      }
+    };
+
+    void checkAuth();
+
     // Check for referral code in URL
     const refFromUrl = parseReferralCodeFromUrl();
     if (refFromUrl) {
@@ -60,7 +71,7 @@ export default function Apply() {
         setReferralCode(savedRef);
       }
     }
-  }, [step]);
+  }, [step, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,8 +92,6 @@ export default function Apply() {
 
       // Store form data for after verification
       sessionStorage.setItem('pendingWaitlistSignup', JSON.stringify({
-        firstName,
-        lastName,
         phoneNumber,
         referralCode,
       }));
@@ -124,11 +133,24 @@ export default function Apply() {
         return;
       }
 
-      // Create profile in waitlist
-      const { error: profileError } = await createProfile({
+      // Generate AI cofounder name using GROQ
+      let agentFirstName = "";
+      let agentLastName = "";
+
+      try {
+        const generatedName = await generateAiCofounderName();
+        agentFirstName = generatedName.firstName;
+        agentLastName = generatedName.lastName;
+      } catch (nameError) {
+        console.error("Failed to generate name with GROQ:", nameError);
+        // Fallback to backend generation if GROQ fails
+      }
+
+      // Create profile in waitlist (with GROQ-generated name or backend fallback)
+      const { data: profileData, error: profileError } = await createProfile({
         userId: authData.user.id,
-        firstName,
-        lastName,
+        firstName: agentFirstName || undefined,
+        lastName: agentLastName || undefined,
         phoneNumber,
         referredByCode: referralCode || undefined,
       });
@@ -141,11 +163,10 @@ export default function Apply() {
           profileError.message?.toLowerCase().includes('already exists');
 
         if (isDuplicate) {
-          // Profile already exists, redirect to application page
+          // Profile already exists, redirect to referrals page
           sessionStorage.removeItem('pendingWaitlistSignup');
           localStorage.removeItem('sage_referral_code');
-          persistApplicationProfileSeed();
-          navigate('/apply/application');
+          navigate(`/apply/id/${authData.user.id}`);
           return;
         }
 
@@ -155,13 +176,38 @@ export default function Apply() {
         return;
       }
 
+      // Create application_profile with random avatar
+      const agentName = profileData
+        ? `${profileData.first_name} ${profileData.last_name}`.trim()
+        : "Sage";
+
+      console.log('[Apply] Creating avatar and application profile for:', authData.user.id);
+
+      const randomAvatar = createRandomAvatarState();
+
+      console.log('[Apply] Generated avatar:', randomAvatar);
+
+      const { error: appProfileError } = await createOrUpdateWaitlistProfile({
+        userId: authData.user.id,
+        agentName,
+        avatarState: randomAvatar,
+      });
+
+      if (appProfileError) {
+        console.error('[Apply] Failed to create application profile:', appProfileError);
+      }
+
       // Clear session storage and referral code
       sessionStorage.removeItem('pendingWaitlistSignup');
       localStorage.removeItem('sage_referral_code');
-      persistApplicationProfileSeed();
 
-      // Navigate to application page
-      navigate('/apply/application');
+      // Store profile data for referrals page
+      if (profileData) {
+        persistApplicationProfileSeed(profileData.first_name, profileData.last_name);
+      }
+
+      // Navigate to referrals page
+      navigate(`/apply/id/${authData.user.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "something went wrong. please try again.");
       setLoading(false);
@@ -304,40 +350,11 @@ export default function Apply() {
           </Link>
           <h1 className="mb-2 text-2xl font-bold text-white">request an invite to sage</h1>
           <p className="text-sm text-white/62">
-            we&apos;ll send you an invite code shortly.
+            sage will text you when you&apos;re off the list
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="mb-2 block text-xs font-bold tracking-[0.18em] text-white/55">
-                first name
-              </label>
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="jane"
-                className={inputClasses}
-                required
-              />
-            </div>
-            <div className="flex-1">
-              <label className="mb-2 block text-xs font-bold tracking-[0.18em] text-white/55">
-                last name
-              </label>
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                placeholder="doe"
-                className={inputClasses}
-                required
-              />
-            </div>
-          </div>
-
           <div>
             <label className="mb-2 block text-xs font-bold tracking-[0.18em] text-white/55">
               phone number

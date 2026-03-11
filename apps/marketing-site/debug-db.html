@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug Database</title>
+</head>
+<body>
+  <h1>Database Debug Tool</h1>
+  <button onclick="checkData()">Check Application Profiles</button>
+  <button onclick="checkProfiles()">Check Profiles</button>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // You'll need to add your Supabase URL and anon key here
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    window.checkData = async function() {
+      const output = document.getElementById('output');
+      output.textContent = 'Checking application_profiles...\n';
+
+      const { data: session } = await supabase.auth.getSession();
+      output.textContent += `Logged in: ${!!session.session}\n`;
+      output.textContent += `User ID: ${session.session?.user?.id || 'none'}\n\n`;
+
+      const { data, error } = await supabase
+        .from('application_profiles')
+        .select('*');
+
+      output.textContent += `Error: ${JSON.stringify(error, null, 2)}\n`;
+      output.textContent += `Data: ${JSON.stringify(data, null, 2)}\n`;
+    };
+
+    window.checkProfiles = async function() {
+      const output = document.getElementById('output');
+      output.textContent = 'Checking profiles...\n';
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, created_at, account_type')
+        .eq('account_type', 'waitlist')
+        .order('created_at', { ascending: true });
+
+      output.textContent += `Error: ${JSON.stringify(error, null, 2)}\n`;
+      output.textContent += `Data: ${JSON.stringify(data, null, 2)}\n`;
+    };
+  </script>
+</body>
+</html>

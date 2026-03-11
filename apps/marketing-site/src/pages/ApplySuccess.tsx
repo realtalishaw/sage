@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Copy } from "lucide-react";
 import confetti from "canvas-confetti";
 import { setPageTitle } from "../lib/seo";
@@ -12,6 +12,7 @@ import { useAuth, useReferrals } from "../hooks";
 import { getApplicationProfile } from "../lib/browser-db";
 import { buildSageAnnualCheckoutLink } from "../lib/stripe";
 import { generateReferralLink } from "@sage/db";
+import { supabase } from "../lib/supabase";
 import type { RandomAvatarState } from "../avatar/random";
 
 const shellClasses =
@@ -132,12 +133,17 @@ function createLaunchConfetti(canvas: HTMLCanvasElement) {
 
 export default function ApplySuccess() {
   const { application_id: applicationId } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { referralCode, totalReferrals } = useReferrals(user?.id || null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [agentName, setAgentName] = useState<string | null>(null);
+  const [avatarState, setAvatarState] = useState<RandomAvatarState | null>(null);
+  const [avatarPortrait, setAvatarPortrait] = useState<string | null>(null);
+  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
   const confettiCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const confettiControllerRef = useRef<ReturnType<typeof createLaunchConfetti> | null>(null);
   const mainPageRef = useRef<HTMLDivElement | null>(null);
@@ -162,6 +168,98 @@ export default function ApplySuccess() {
   useEffect(() => {
     setPageTitle("You're In");
   }, []);
+
+  // Fetch application profile with avatar and agent name
+  useEffect(() => {
+    if (!applicationId) return;
+
+    let isCancelled = false;
+
+    void (async () => {
+      console.log('[ApplySuccess] Fetching application profile for:', applicationId);
+
+      // Fetch application_profile for avatar and agent name
+      const { data: appProfile, error: appProfileError } = await supabase
+        .from('application_profiles')
+        .select('profile, avatar, avatar_portrait_png')
+        .eq('id', applicationId)
+        .single();
+
+      console.log('[ApplySuccess] Application profile response:', {
+        data: appProfile,
+        error: appProfileError
+      });
+
+      if (isCancelled) return;
+
+      if (appProfile) {
+        const profileData = appProfile.profile as { agentName?: string };
+        console.log('[ApplySuccess] Setting agent name:', profileData.agentName);
+        console.log('[ApplySuccess] Setting avatar state:', appProfile.avatar);
+
+        setAgentName(profileData.agentName || null);
+        setAvatarState(appProfile.avatar as RandomAvatarState);
+        setAvatarPortrait(appProfile.avatar_portrait_png);
+      } else {
+        console.warn('[ApplySuccess] No application profile found - creating one now for returning user');
+
+        // Fetch profile to get the agent name
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', applicationId)
+          .single();
+
+        if (profileData && !isCancelled) {
+          const agentName = `${profileData.first_name} ${profileData.last_name}`.trim();
+          const { createRandomAvatarState } = await import('../avatar/random');
+          const { createOrUpdateWaitlistProfile } = await import('../lib/browser-db');
+
+          const randomAvatar = createRandomAvatarState();
+
+          await createOrUpdateWaitlistProfile({
+            userId: applicationId,
+            agentName,
+            avatarState: randomAvatar,
+          });
+
+          // Retry fetching
+          const { data: newAppProfile } = await supabase
+            .from('application_profiles')
+            .select('profile, avatar, avatar_portrait_png')
+            .eq('id', applicationId)
+            .single();
+
+          if (newAppProfile && !isCancelled) {
+            const newProfileData = newAppProfile.profile as { agentName?: string };
+            setAgentName(newProfileData.agentName || null);
+            setAvatarState(newAppProfile.avatar as RandomAvatarState);
+            setAvatarPortrait(newAppProfile.avatar_portrait_png);
+          }
+        }
+      }
+
+      // Fetch waitlist position from the database (stored in profiles table)
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('waitlist_position')
+        .eq('id', applicationId)
+        .single();
+
+      console.log('[ApplySuccess] Profile data:', { profile, profileError });
+
+      if (!isCancelled && profile?.waitlist_position) {
+        console.log('[ApplySuccess] Waitlist position:', profile.waitlist_position);
+        setWaitlistPosition(profile.waitlist_position);
+      } else {
+        console.warn('[ApplySuccess] No waitlist position found for user');
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [applicationId]);
 
   useEffect(() => {
     if (!applicationId) {
@@ -199,8 +297,8 @@ export default function ApplySuccess() {
     };
   }, [applicationId]);
 
-  // Use real referral data instead of mock data
-  const orderInLine = useMemo(() => 600 + (seed % 2400), [seed]); // TODO: Replace with real waitlist position
+  // Use real referral data and waitlist position
+  const orderInLine = useMemo(() => waitlistPosition ?? 1, [waitlistPosition]);
   const referralCount = useMemo(() => totalReferrals, [totalReferrals]);
   const referralLink = useMemo(
     () => referralCode ? generateReferralLink(referralCode) : `${window.location.origin}/apply?ref=${applicationId || "sage"}`,
@@ -408,19 +506,27 @@ export default function ApplySuccess() {
             )}
           </section>
 
-          <section className="order-1 flex flex-col items-center gap-4 lg:order-2 lg:items-end lg:justify-center">
+          <section className="order-1 flex flex-col items-center gap-6 lg:order-2 lg:items-end lg:justify-center">
             <div className="flex w-full justify-center lg:justify-end">
               <SageProfileCard
                 appRef={ticketAppRef}
                 cardRef={ticketRef}
                 orderInLine={orderInLine}
-                sageName={dbApprovedSummary?.sageName ?? approvedApplicationSummary?.sageName}
+                sageName={agentName ?? dbApprovedSummary?.sageName ?? approvedApplicationSummary?.sageName}
                 avatarImageSrc={
-                  dbApprovedSummary?.avatarPortraitPng ?? approvedApplicationSummary?.avatarPortraitPng
+                  avatarPortrait ?? dbApprovedSummary?.avatarPortraitPng ?? approvedApplicationSummary?.avatarPortraitPng
                 }
+                avatarState={avatarState ?? dbApprovedSummary?.avatarState ?? approvedApplicationSummary?.avatarState}
               />
             </div>
 
+            <Button
+              variant="secondary"
+              className="h-11 w-full max-w-[320px] border-white/10 bg-white/5 px-6 text-white/80 hover:bg-white/8"
+              onClick={() => navigate('/apply/application')}
+            >
+              customize your sage now
+            </Button>
           </section>
         </div>
       </div>

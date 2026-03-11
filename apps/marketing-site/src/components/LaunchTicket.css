@@ -3,7 +3,7 @@
   --ticket-p: 100%;
   --ticket-h: 50%;
   --ticket-r: 0deg;
-  --ticket-logopng: url(https://assets.codepen.io/13471/threads.png);
+  --ticket-logopng: url(/sage-icon.png);
   --ticket-shape: url(https://assets.codepen.io/13471/ticket-shape.svg);
   --ticket-ar: 20 / 30;
   --ticket-gutter: 8%;
@@ -198,10 +198,16 @@
 
 .launch-ticket__profile {
   width: 40px;
+  height: 40px;
   margin-right: 10px;
   border-radius: 999px;
   box-shadow: 0 0 0 1.33px black;
   image-rendering: crisp-edges;
+}
+
+.launch-ticket__profile--image {
+  object-fit: cover;
+  background: #0b0b0c;
 }
 
 .launch-ticket__verified {
