@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { setPageTitle } from "../lib/seo";
 import { Button } from "../components/Button";
+import { SmsModal } from "../components/SmsModal";
 import LandingShowcase from "../components/LandingShowcase";
 import LandingFooter from "../components/LandingFooter";
 
 export default function Home() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [showSmsModal, setShowSmsModal] = useState(false);
 
   useEffect(() => {
     setPageTitle("Your AI co-founder");
@@ -22,8 +24,26 @@ export default function Home() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  };
+
+  const handleGetStarted = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (isMobile()) {
+      window.location.href = "sms:+12052434811&body=add%20me%20%F0%9F%98%89";
+    } else {
+      setShowSmsModal(true);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0b0b0b] text-[rgba(255,255,255,0.92)] selection:bg-white/20 lowercase">
+      <SmsModal isOpen={showSmsModal} onClose={() => setShowSmsModal(false)} />
+
       <header className="fixed left-0 right-0 top-0 z-50 px-6 py-8">
         <div
           className={`pointer-events-none absolute inset-0 transition-all duration-500 ${
@@ -36,11 +56,14 @@ export default function Home() {
           <Link to="/" className="flex items-center gap-3">
             <span className="text-xl font-bold tracking-tighter">sage 🌱</span>
           </Link>
-          <Link to="/activate">
-            <Button variant="primary" size="sm" className="rounded-full px-6">
-              get started
-            </Button>
-          </Link>
+          <Button
+            variant="primary"
+            size="sm"
+            className="rounded-full px-6"
+            onClick={handleGetStarted}
+          >
+            get started
+          </Button>
         </div>
       </header>
 
@@ -56,16 +79,15 @@ export default function Home() {
             text sage to delegate tasks, make connections, and build faster.
           </p>
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row mb-12">
-            <Link to="/activate">
-              <Button
-                variant="primary"
-                size="md"
-                className="rounded-full px-10"
-                data-landing-cta="true"
-              >
-                get started
-              </Button>
-            </Link>
+            <Button
+              variant="primary"
+              size="md"
+              className="rounded-full px-10"
+              data-landing-cta="true"
+              onClick={handleGetStarted}
+            >
+              get started
+            </Button>
           </div>
         </section>
 

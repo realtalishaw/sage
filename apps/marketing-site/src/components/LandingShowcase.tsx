@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { Link } from "react-router-dom";
 import { X } from "lucide-react";
 import { LayoutGroup, motion, AnimatePresence } from "framer-motion";
 import IPhoneMockup from "./IPhoneMockup";
 import AnimatedIPhoneMockup from "./AnimatedIPhoneMockup";
+import { SmsModal } from "./SmsModal";
 import { SHOWCASE_CARDS, type ShowcaseData } from "../data/showcaseContent";
 
 const ARCH_PHONE_WIDTH = 350;
@@ -295,10 +295,20 @@ function MasonryGrid({
 function ShowcaseModal({
   showcase,
   onClose,
+  onGetStarted,
 }: {
   showcase: ShowcaseData;
   onClose: () => void;
+  onGetStarted: () => void;
 }) {
+  const handleGetStarted = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onClose();
+    setTimeout(() => {
+      onGetStarted();
+    }, 100);
+  };
+
   const formattedMessages = showcase.messages.map((msg, idx) => ({
     id: `${showcase.id}-${idx}`,
     text: msg.text,
@@ -309,13 +319,13 @@ function ShowcaseModal({
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md"
-      onClick={onClose}
-    >
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md"
+        onClick={onClose}
+      >
       <motion.button
         type="button"
         onClick={onClose}
@@ -398,12 +408,12 @@ function ShowcaseModal({
                 <p className="text-sm font-semibold text-white">ready to try sage?</p>
                 <p className="text-xs text-white/50">get started in less than 2 minutes</p>
               </div>
-              <Link
-                to="/activate"
+              <button
+                onClick={handleGetStarted}
                 className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-black transition-all hover:bg-white/90"
               >
                 get started
-              </Link>
+              </button>
             </div>
           </div>
         </motion.div>
@@ -415,6 +425,21 @@ function ShowcaseModal({
 export default function LandingShowcase() {
   const [viewMode, setViewMode] = useState<"arch" | "grid">("grid");
   const [selectedCard, setSelectedCard] = useState<ShowcaseData | null>(null);
+  const [showSmsModal, setShowSmsModal] = useState(false);
+
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  };
+
+  const handleGetStarted = () => {
+    if (isMobile()) {
+      window.location.href = "sms:+12052434811&body=add%20me%20%F0%9F%98%89";
+    } else {
+      setShowSmsModal(true);
+    }
+  };
 
   const canUseArch = () => {
     if (window.innerHeight < ARCH_MIN_VIEWPORT_HEIGHT) return false;
@@ -481,6 +506,8 @@ export default function LandingShowcase() {
 
   return (
     <>
+      <SmsModal isOpen={showSmsModal} onClose={() => setShowSmsModal(false)} />
+
       <section className="relative flex min-h-screen w-full flex-col items-center">
         <div className="relative flex w-full flex-1 flex-col items-center">
           <LayoutGroup>
@@ -512,7 +539,13 @@ export default function LandingShowcase() {
       </section>
 
       <AnimatePresence>
-        {selectedCard && <ShowcaseModal showcase={selectedCard} onClose={() => setSelectedCard(null)} />}
+        {selectedCard && (
+          <ShowcaseModal
+            showcase={selectedCard}
+            onClose={() => setSelectedCard(null)}
+            onGetStarted={handleGetStarted}
+          />
+        )}
       </AnimatePresence>
     </>
   );
