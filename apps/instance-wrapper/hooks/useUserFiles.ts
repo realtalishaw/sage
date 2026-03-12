@@ -12,6 +12,7 @@ import {
   getFileUrl 
 } from '../services/userFiles';
 import { toast } from 'sonner';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 
 export function useUserFiles() {
   const [files, setFiles] = useState<UserFile[]>([]);
@@ -19,6 +20,7 @@ export function useUserFiles() {
   const [uploading, setUploading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [instanceId, setInstanceId] = useState<string | null>(null);
 
   // Load files on mount
   useEffect(() => {
@@ -31,10 +33,12 @@ export function useUserFiles() {
           return;
         }
 
+        const instance = await getCurrentInstanceAccess();
         setUserId(user.id);
+        setInstanceId(instance.instanceId);
         setUserEmail(user.email || null);
 
-        const userFiles = await fetchUserFiles(user.id);
+        const userFiles = await fetchUserFiles(user.id, instance.instanceId);
         setFiles(userFiles);
       } catch (error) {
         console.error('Error loading files:', error);
@@ -53,10 +57,10 @@ export function useUserFiles() {
 
   // Create folder
   const handleCreateFolder = useCallback(async (name: string, parentFolderId: string | null = null) => {
-    if (!userId) return null;
+    if (!userId || !instanceId) return null;
 
     try {
-      const newFolder = await createFolder(userId, name, parentFolderId);
+      const newFolder = await createFolder(userId, instanceId, name, parentFolderId);
       setFiles(prev => [newFolder, ...prev]);
       toast.success(`Folder "${name}" created`);
       return newFolder;
@@ -65,15 +69,15 @@ export function useUserFiles() {
       toast.error('An error occurred');
       return null;
     }
-  }, [userId]);
+  }, [instanceId, userId]);
 
   // Upload single file
   const handleUploadFile = useCallback(async (file: File, parentFolderId: string | null = null) => {
-    if (!userId) return null;
+    if (!userId || !instanceId) return null;
 
     setUploading(true);
     try {
-      const newFile = await uploadFile(userId, file, parentFolderId);
+      const newFile = await uploadFile(userId, instanceId, file, parentFolderId);
       setFiles(prev => [newFile, ...prev]);
       toast.success(`"${file.name}" uploaded`);
       return newFile;
@@ -84,15 +88,15 @@ export function useUserFiles() {
     } finally {
       setUploading(false);
     }
-  }, [userId]);
+  }, [instanceId, userId]);
 
   // Upload multiple files
   const handleUploadFiles = useCallback(async (fileList: File[], parentFolderId: string | null = null) => {
-    if (!userId) return [];
+    if (!userId || !instanceId) return [];
 
     setUploading(true);
     try {
-      const newFiles = await uploadFiles(userId, fileList, parentFolderId);
+      const newFiles = await uploadFiles(userId, instanceId, fileList, parentFolderId);
       setFiles(prev => [...newFiles, ...prev]);
       if (newFiles.length > 0) {
         toast.success(`${newFiles.length} file${newFiles.length > 1 ? 's' : ''} uploaded`);
@@ -105,11 +109,11 @@ export function useUserFiles() {
     } finally {
       setUploading(false);
     }
-  }, [userId]);
+  }, [instanceId, userId]);
 
   // Upload a folder (creates the folder first, then uploads all files into it)
   const handleUploadFolder = useCallback(async (fileList: File[], parentFolderId: string | null = null) => {
-    if (!userId || fileList.length === 0) return [];
+    if (!userId || !instanceId || fileList.length === 0) return [];
 
     setUploading(true);
     try {
@@ -124,11 +128,11 @@ export function useUserFiles() {
       }
 
       // Create the folder first
-      const newFolder = await createFolder(userId, folderName, parentFolderId);
+      const newFolder = await createFolder(userId, instanceId, folderName, parentFolderId);
       setFiles(prev => [newFolder, ...prev]);
       
       // Upload all files into the new folder
-      const newFiles = await uploadFiles(userId, fileList, newFolder.id);
+      const newFiles = await uploadFiles(userId, instanceId, fileList, newFolder.id);
       setFiles(prev => [...newFiles, ...prev]);
       
       toast.success(`Folder "${folderName}" uploaded with ${newFiles.length} file${newFiles.length !== 1 ? 's' : ''}`);
@@ -140,7 +144,7 @@ export function useUserFiles() {
     } finally {
       setUploading(false);
     }
-  }, [userId, handleUploadFiles]);
+  }, [handleUploadFiles, instanceId, userId]);
 
   // Delete file
   const handleDeleteFile = useCallback(async (fileId: string) => {
@@ -208,15 +212,15 @@ export function useUserFiles() {
 
   // Refresh files
   const refreshFiles = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !instanceId) return;
     
     try {
-      const userFiles = await fetchUserFiles(userId);
+      const userFiles = await fetchUserFiles(userId, instanceId);
       setFiles(userFiles);
     } catch (error) {
       console.error('Error refreshing files:', error);
     }
-  }, [userId]);
+  }, [instanceId, userId]);
 
   return {
     files: nonFolderFiles,

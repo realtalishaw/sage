@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/src/integrations/supabase/client';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 import { WorkstreamItem, Reaction, DecisionCard, GIAFile } from '../types';
 import type { Json } from '@/src/integrations/supabase/types';
 
 interface WorkstreamEventRow {
   id: string;
+  instance_id: string | null;
   user_id: string;
   event_type: string;
   message: string;
@@ -122,10 +124,12 @@ export const useWorkstreamRealtime = () => {
         setLoading(false);
         return;
       }
+      const instance = await getCurrentInstanceAccess();
 
       const { data, error: fetchError } = await supabase
         .from('workstream_events')
         .select('*')
+        .eq('instance_id', instance.instanceId)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(BATCH_SIZE);
@@ -169,10 +173,12 @@ export const useWorkstreamRealtime = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const instance = await getCurrentInstanceAccess();
 
       const { data, error: fetchError } = await supabase
         .from('workstream_events')
         .select('*')
+        .eq('instance_id', instance.instanceId)
         .eq('user_id', user.id)
         .lt('created_at', oldestTimestamp)
         .order('created_at', { ascending: false })
@@ -217,58 +223,60 @@ export const useWorkstreamRealtime = () => {
 
   // Set up real-time subscription
   useEffect(() => {
-    fetchEvents();
+    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    // Subscribe to real-time changes
-    const channel = supabase
-      .channel('workstream_realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'workstream_events'
-        },
-        (payload) => {
-          console.log('New workstream event:', payload);
-          const newItem = transformEventToWorkstreamItem(payload.new as WorkstreamEventRow);
-          setItems(prev => [...prev, newItem]);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workstream_events'
-        },
-        (payload) => {
-          console.log('Updated workstream event:', payload);
-          const updatedItem = transformEventToWorkstreamItem(payload.new as WorkstreamEventRow);
-          setItems(prev => prev.map(item => 
-            item.id === updatedItem.id ? updatedItem : item
-          ));
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'workstream_events'
-        },
-        (payload) => {
-          console.log('Deleted workstream event:', payload);
-          const deletedId = (payload.old as { id: string }).id;
-          setItems(prev => prev.filter(item => item.id !== deletedId));
-        }
-      )
-      .subscribe((status) => {
-        console.log('Workstream realtime subscription status:', status);
-      });
+    void (async () => {
+      await fetchEvents();
+      const instance = await getCurrentInstanceAccess();
+
+      activeChannel = supabase
+        .channel(`workstream_realtime:${instance.instanceId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'workstream_events',
+            filter: `instance_id=eq.${instance.instanceId}`,
+          },
+          (payload) => {
+            const newItem = transformEventToWorkstreamItem(payload.new as WorkstreamEventRow);
+            setItems((prev) => [...prev, newItem]);
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'workstream_events',
+            filter: `instance_id=eq.${instance.instanceId}`,
+          },
+          (payload) => {
+            const updatedItem = transformEventToWorkstreamItem(payload.new as WorkstreamEventRow);
+            setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)));
+          },
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'workstream_events',
+            filter: `instance_id=eq.${instance.instanceId}`,
+          },
+          (payload) => {
+            const deletedId = (payload.old as { id: string }).id;
+            setItems((prev) => prev.filter((item) => item.id !== deletedId));
+          },
+        )
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (activeChannel) {
+        supabase.removeChannel(activeChannel);
+      }
     };
   }, [fetchEvents]);
 
@@ -283,10 +291,12 @@ export const useWorkstreamRealtime = () => {
       if (!user) {
         return { success: false, error: 'Not authenticated' };
       }
+      const instance = await getCurrentInstanceAccess();
 
       const { data, error: insertError } = await supabase
         .from('workstream_events')
         .insert({
+          instance_id: instance.instanceId,
           user_id: user.id,
           event_type: 'user_message',
           message: message,
@@ -324,10 +334,12 @@ export const useWorkstreamRealtime = () => {
       if (!user) {
         return { success: false, error: 'Not authenticated' };
       }
+      const instance = await getCurrentInstanceAccess();
 
       const { data, error: insertError } = await supabase
         .from('workstream_events')
         .insert({
+          instance_id: instance.instanceId,
           user_id: user.id,
           event_type: 'agent_message',
           message: message,

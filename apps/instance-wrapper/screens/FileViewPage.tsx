@@ -4,6 +4,7 @@ import { ArrowLeft, Download, ExternalLink, Loader2, ChevronUp } from 'lucide-re
 import { supabase } from '../src/integrations/supabase/client';
 import { FileViewer } from '../components/FileViewer';
 import { Button } from '../components/Button';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 
 interface ArtifactData {
   id: string;
@@ -65,10 +66,13 @@ const FileViewPage: React.FC = () => {
       }
 
       try {
+        const instance = await getCurrentInstanceAccess();
+
         // First try to find in artifacts table
         const { data: artifactData, error: artifactError } = await supabase
           .from('artifacts')
           .select('*')
+          .eq('instance_id', instance.instanceId)
           .eq('id', fileId)
           .maybeSingle();
 
@@ -83,6 +87,7 @@ const FileViewPage: React.FC = () => {
         const { data: userFileData, error: userFileError } = await supabase
           .from('files')
           .select('*')
+          .eq('instance_id', instance.instanceId)
           .eq('id', fileId)
           .maybeSingle();
 

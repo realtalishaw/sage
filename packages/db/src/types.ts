@@ -71,6 +71,133 @@ export type Database = {
           },
         ]
       }
+      instance_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          instance_id: string
+          owner_user_id: string
+          status: string
+          step: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          instance_id: string
+          owner_user_id: string
+          status?: string
+          step?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          instance_id?: string
+          owner_user_id?: string
+          status?: string
+          step?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instance_jobs_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instance_jobs_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instance_jobs_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist_rankings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instances: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          droplet_id: string | null
+          droplet_name: string | null
+          id: string
+          image: string | null
+          ip_address: string | null
+          owner_user_id: string
+          primary_domain: string | null
+          ready_at: string | null
+          region: string | null
+          size: string | null
+          slug: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          droplet_id?: string | null
+          droplet_name?: string | null
+          id?: string
+          image?: string | null
+          ip_address?: string | null
+          owner_user_id: string
+          primary_domain?: string | null
+          ready_at?: string | null
+          region?: string | null
+          size?: string | null
+          slug: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          droplet_id?: string | null
+          droplet_name?: string | null
+          id?: string
+          image?: string | null
+          ip_address?: string | null
+          owner_user_id?: string
+          primary_domain?: string | null
+          ready_at?: string | null
+          region?: string | null
+          size?: string | null
+          slug?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instances_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instances_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist_rankings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invite_codes: {
         Row: {
           claimed_at: string | null

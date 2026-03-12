@@ -91,7 +91,7 @@ function formatDate(dateString: string): string {
   }
 }
 
-export async function fetchUserArtifacts(userId: string): Promise<{ 
+export async function fetchUserArtifacts(userId: string, instanceId: string): Promise<{ 
   files: ArtifactFile[], 
   folders: ArtifactFolder[] 
 }> {
@@ -101,6 +101,7 @@ export async function fetchUserArtifacts(userId: string): Promise<{
   const { data: artifacts, error } = await supabase
     .from('artifacts')
     .select('*')
+    .eq('instance_id', instanceId)
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 

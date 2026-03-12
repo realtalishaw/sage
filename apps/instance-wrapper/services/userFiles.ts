@@ -2,6 +2,7 @@ import { supabase } from '../src/integrations/supabase/client';
 
 export interface UserFile {
   id: string;
+  instance_id: string | null;
   user_id: string;
   name: string;
   type: 'file' | 'folder' | 'doc' | 'sheet' | 'image' | 'pdf';
@@ -26,10 +27,11 @@ function getFileType(mimeType: string): UserFile['type'] {
 }
 
 // Fetch all user files
-export async function fetchUserFiles(userId: string): Promise<UserFile[]> {
+export async function fetchUserFiles(userId: string, instanceId: string): Promise<UserFile[]> {
   const { data, error } = await supabase
     .from('files')
     .select('*')
+    .eq('instance_id', instanceId)
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
@@ -43,13 +45,15 @@ export async function fetchUserFiles(userId: string): Promise<UserFile[]> {
 
 // Create a folder
 export async function createFolder(
-  userId: string, 
+  userId: string,
+  instanceId: string,
   name: string, 
   parentFolderId: string | null = null
 ): Promise<UserFile> {
   const { data, error } = await supabase
     .from('files')
     .insert({
+      instance_id: instanceId,
       user_id: userId,
       name,
       type: 'folder',
@@ -69,13 +73,14 @@ export async function createFolder(
 // Upload a file
 export async function uploadFile(
   userId: string,
+  instanceId: string,
   file: File,
   parentFolderId: string | null = null
 ): Promise<UserFile> {
-  // Generate storage path: {user_id}/{uuid}_{filename}
+  // Generate storage path: {instance_id}/{user_id}/{uuid}.{ext}
   const fileExt = file.name.split('.').pop();
   const uniqueId = crypto.randomUUID();
-  const storagePath = `${userId}/${uniqueId}.${fileExt}`;
+  const storagePath = `${instanceId}/${userId}/${uniqueId}.${fileExt}`;
 
   // Upload to storage
   const { error: uploadError } = await supabase.storage
@@ -95,6 +100,7 @@ export async function uploadFile(
   const { data, error: dbError } = await supabase
     .from('files')
     .insert({
+      instance_id: instanceId,
       user_id: userId,
       name: file.name,
       type: fileType,
@@ -119,6 +125,7 @@ export async function uploadFile(
 // Upload multiple files
 export async function uploadFiles(
   userId: string,
+  instanceId: string,
   files: File[],
   parentFolderId: string | null = null
 ): Promise<UserFile[]> {
@@ -126,7 +133,7 @@ export async function uploadFiles(
   
   for (const file of files) {
     try {
-      const uploaded = await uploadFile(userId, file, parentFolderId);
+      const uploaded = await uploadFile(userId, instanceId, file, parentFolderId);
       uploadedFiles.push(uploaded);
     } catch (error) {
       console.error(`Failed to upload ${file.name}:`, error);

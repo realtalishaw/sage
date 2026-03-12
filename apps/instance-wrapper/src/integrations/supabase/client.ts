@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 type MockUser = {
@@ -250,6 +251,32 @@ const mockDb: Record<string, Row[]> = {
 };
 
 const authListeners = new Set<(event: string, session: { user: MockUser } | null) => void>();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const browserSupabase = createClient<Database>(supabaseUrl, supabasePublishableKey);
+const REAL_TABLES = new Set([
+  'instances',
+  'instance_jobs',
+  'profiles',
+  'apps',
+  'artifacts',
+  'assistant_identity',
+  'files',
+  'todo_list',
+  'workstream_events',
+]);
+const REAL_RPCS = new Set([
+  'add_workstream_reaction',
+  'check_user_has_access',
+  'generate_user_api_key',
+  'ensure_three_invite_codes',
+  'use_invite_code',
+  'grant_free_trial_credit',
+  'grant_invite_bonus_credit',
+  'submit_feedback',
+  'get_invite_code_details',
+  'get_invite_code_creator_email',
+]);
 
 function canUseStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -432,69 +459,48 @@ class MockQueryBuilder<T extends Row = Row> implements PromiseLike<{ data: T | T
 
 const auth = {
   async getUser() {
-    return { data: { user: getStoredUser() }, error: null };
+    return await browserSupabase.auth.getUser();
   },
   async getSession() {
-    const user = getStoredUser();
-    return { data: { session: user ? { user, access_token: 'mock-session-token' } : null }, error: null };
+    return await browserSupabase.auth.getSession();
   },
   onAuthStateChange(callback: (event: string, session: { user: MockUser } | null) => void) {
-    authListeners.add(callback);
-    return {
-      data: {
-        subscription: {
-          unsubscribe() {
-            authListeners.delete(callback);
-          },
-        },
+    return browserSupabase.auth.onAuthStateChange(callback as never);
+  },
+  async signInWithOtp({ phone }: { phone: string }) {
+    return await browserSupabase.auth.signInWithOtp({
+      phone,
+      options: {
+        shouldCreateUser: true,
       },
-    };
+    });
   },
-  async signInWithPassword({ email }: { email: string; password: string }) {
-    const user = { id: DEFAULT_USER_ID, email };
-    persistUser(user);
-    notifyAuth('SIGNED_IN', user);
-    return { data: { user, session: { user, access_token: 'mock-session-token' } }, error: null };
-  },
-  async signUp({ email }: { email: string; password: string }) {
-    const user = { id: DEFAULT_USER_ID, email };
-    persistUser(user);
-    notifyAuth('SIGNED_IN', user);
-    return { data: { user, session: { user, access_token: 'mock-session-token' } }, error: null };
+  async verifyOtp({
+    phone,
+    token,
+    type,
+  }: {
+    phone: string;
+    token: string;
+    type: 'sms' | 'phone_change';
+  }) {
+    return await browserSupabase.auth.verifyOtp({
+      phone,
+      token,
+      type,
+    });
   },
   async signOut() {
-    persistUser(null);
-    notifyAuth('SIGNED_OUT', null);
-    return { error: null };
+    return await browserSupabase.auth.signOut();
   },
   async updateUser() {
-    const user = getStoredUser();
-    return { data: { user }, error: null };
+    return await browserSupabase.auth.updateUser({});
   },
 };
 
 const storage = {
   from(bucket: string) {
-    return {
-      async upload(path: string) {
-        return { data: { path, bucket }, error: null };
-      },
-      async remove() {
-        return { data: null, error: null };
-      },
-      getPublicUrl(path: string) {
-        return { data: { publicUrl: `https://example.com/${encodeURIComponent(path)}` } };
-      },
-      async createSignedUrl(path: string) {
-        return { data: { signedUrl: `https://example.com/${encodeURIComponent(path)}?signed=1` }, error: null };
-      },
-      async download(path: string) {
-        return { data: new Blob([`Mock file contents for ${path}`], { type: 'text/plain' }), error: null };
-      },
-      async list() {
-        return { data: [], error: null };
-      },
-    };
+    return browserSupabase.storage.from(bucket);
   },
 };
 
@@ -532,9 +538,16 @@ export const supabase = {
   storage,
   functions,
   from(table: keyof Database['public']['Tables'] | string) {
+    if (REAL_TABLES.has(String(table))) {
+      return browserSupabase.from(table as keyof Database['public']['Tables']);
+    }
     return new MockQueryBuilder(String(table));
   },
-  async rpc(name: string) {
+  async rpc(name: string, params?: Record<string, unknown>) {
+    if (REAL_RPCS.has(name)) {
+      return await browserSupabase.rpc(name as never, params as never);
+    }
+
     switch (name) {
       case 'check_user_has_access':
         return { data: true, error: null };
@@ -557,10 +570,10 @@ export const supabase = {
         return { data: true, error: null };
     }
   },
-  channel() {
-    return { ...realtimeChannel };
+  channel(name: string) {
+    return browserSupabase.channel(name);
   },
-  removeChannel() {
-    return;
+  removeChannel(channel: ReturnType<typeof browserSupabase.channel>) {
+    return browserSupabase.removeChannel(channel);
   },
 } as any;

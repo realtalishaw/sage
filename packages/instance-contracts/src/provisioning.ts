@@ -2,36 +2,55 @@ import type { InstanceId, IsoTimestamp, UrlString } from '@sage/shared-types';
 
 export interface CreateInstanceRequest {
   name: string;
+  ownerUserId: string;
+  requestedSlug?: string;
   region?: string;
 }
+
+export type InstanceProvisioningStatus = 'queued' | 'created' | 'provisioning' | 'ready' | 'error' | 'deleted';
 
 export interface CreatedInstanceResponse {
   createdAt: IsoTimestamp;
   image: string;
   instanceId: InstanceId;
+  dropletId?: string;
   ipAddress: string;
   name: string;
+  ownerUserId: string;
+  primaryDomain: string | null;
   region: string;
   size: string;
-  status: 'created' | 'provisioning' | 'ready' | 'error';
+  slug: string;
+  status: InstanceProvisioningStatus;
   error?: string;
 }
 
 export interface DeletedInstanceResponse {
   deletedAt: IsoTimestamp;
   instanceId: InstanceId;
+  dropletId?: string;
   name: string;
+  ownerUserId: string;
+  primaryDomain: string | null;
+  slug: string;
   status: 'deleted';
 }
 
 export interface InstanceStatusResponse {
   image?: string;
   instanceId: InstanceId;
+  dropletId?: string;
   ipAddress?: string;
   name: string;
+  ownerUserId: string;
+  primaryDomain: string | null;
   region?: string;
   size?: string;
-  status: string;
+  slug: string;
+  status: InstanceProvisioningStatus | string;
+  step?: string;
+  readyAt?: IsoTimestamp | null;
+  deletedAt?: IsoTimestamp | null;
   error?: string;
 }
 
@@ -56,7 +75,11 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 export function isCreateInstanceRequest(value: unknown): value is CreateInstanceRequest {
-  if (!isRecord(value) || !isNonEmptyString(value.name)) {
+  if (!isRecord(value) || !isNonEmptyString(value.name) || !isNonEmptyString(value.ownerUserId)) {
+    return false;
+  }
+
+  if (value.requestedSlug !== undefined && !isNonEmptyString(value.requestedSlug)) {
     return false;
   }
 

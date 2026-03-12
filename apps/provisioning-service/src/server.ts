@@ -13,9 +13,11 @@ import {
   type CreatedInstanceResponse,
   type DeletedInstanceResponse,
   type InstanceListResponse,
+  type InstanceProvisioningStatus,
   type InstanceStatusResponse,
   type ProvisioningHealthResponse,
 } from '@sage/instance-contracts';
+import { createClient } from '@supabase/supabase-js';
 
 const execFileAsync = promisify(execFile);
 
@@ -41,8 +43,12 @@ const DEPLOY_WAIT_TIMEOUT_MS = Number(process.env.SAGE_DEPLOY_WAIT_TIMEOUT_MS ||
 const BUNDLE_TTL_MS = Number(process.env.SAGE_PROVISIONING_BUNDLE_TTL_MS || 30 * 60 * 1000);
 const OPENCLAW_ARCHIVE_URL =
   process.env.SAGE_OPENCLAW_ARCHIVE_URL || 'https://codeload.github.com/realtalishaw/openclaw/tar.gz/refs/heads/main';
+const PRIMARY_DOMAIN_SUFFIX = process.env.SAGE_PRIMARY_DOMAIN_SUFFIX || 'joinsage.app';
 const SAGE_ROOT = '/opt/sage';
 const REMOTE_ENV_FILE = '/etc/sage/openclaw.env';
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.SAGE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SAGE_SUPABASE_SERVICE_ROLE_KEY;
 
 type SshKeyRecord = {
   id: number;
@@ -78,9 +84,34 @@ type BundleRecord = {
   filePath: string;
 };
 
-type ProvisioningRecord = {
-  error?: string;
-  status: 'provisioning' | 'ready' | 'error';
+type InstanceRow = {
+  created_at: string;
+  deleted_at: string | null;
+  droplet_id: string | null;
+  droplet_name: string | null;
+  id: string;
+  image: string | null;
+  ip_address: string | null;
+  owner_user_id: string;
+  primary_domain: string | null;
+  ready_at: string | null;
+  region: string | null;
+  size: string | null;
+  slug: string;
+  status: InstanceProvisioningStatus | string;
+  updated_at: string;
+};
+
+type InstanceJobRow = {
+  completed_at: string | null;
+  created_at: string;
+  error_message: string | null;
+  id: string;
+  instance_id: string;
+  owner_user_id: string;
+  status: InstanceProvisioningStatus | string;
+  step: string | null;
+  updated_at: string;
 };
 
 type CommandOptions = {
@@ -90,7 +121,15 @@ type CommandOptions = {
 };
 
 const bundleStore = new Map<string, BundleRecord>();
-const provisioningStore = new Map<string, ProvisioningRecord>();
+const supabaseAdmin =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      })
+    : null;
 
 const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => {
   res.statusCode = statusCode;
@@ -107,6 +146,14 @@ const readJsonBody = async <T>(req: IncomingMessage): Promise<T> => {
 
   const body = Buffer.concat(chunks).toString('utf8');
   return JSON.parse(body) as T;
+};
+
+const getSupabaseAdmin = () => {
+  if (!supabaseAdmin) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured for provisioning.');
+  }
+
+  return supabaseAdmin;
 };
 
 const getSecretEnvContent = async () => {
@@ -190,20 +237,12 @@ const listSshKeys = async (): Promise<SshKeyRecord[]> => {
   return JSON.parse(output) as SshKeyRecord[];
 };
 
-const listDroplets = async (): Promise<DropletRecord[]> => {
-  const output = await runDoctl(['compute', 'droplet', 'list', '--output', 'json']);
-  return JSON.parse(output) as DropletRecord[];
-};
-
 const resolveSshKeyIds = async (refs: string[]): Promise<string[]> => {
   const keys = await listSshKeys();
   const resolvedIds = refs.map((ref) => {
     const normalizedRef = ref.trim();
     const matchedKey = keys.find(
-      (key) =>
-        String(key.id) === normalizedRef ||
-        key.name === normalizedRef ||
-        key.fingerprint === normalizedRef,
+      (key) => String(key.id) === normalizedRef || key.name === normalizedRef || key.fingerprint === normalizedRef,
     );
 
     if (!matchedKey) {
@@ -214,15 +253,6 @@ const resolveSshKeyIds = async (refs: string[]): Promise<string[]> => {
   });
 
   return [...new Set(resolvedIds)];
-};
-
-const findDroplet = async (instanceRef: string) => {
-  const normalizedRef = instanceRef.trim();
-  const droplets = await listDroplets();
-
-  return droplets.find(
-    (droplet) => String(droplet.id) === normalizedRef || droplet.name === normalizedRef,
-  );
 };
 
 const cleanupExpiredBundles = async () => {
@@ -267,9 +297,7 @@ const createProvisioningBundle = async () => {
   await runProcess(
     'tar',
     ['-xzf', openClawArchivePath, '-C', join(payloadRoot, 'forks', 'openclaw'), '--strip-components=1'],
-    {
-      timeoutMs: 5 * 60 * 1000,
-    },
+    { timeoutMs: 5 * 60 * 1000 },
   );
 
   await runProcess(
@@ -286,9 +314,7 @@ const createProvisioningBundle = async () => {
       'scripts/bootstrap',
       'infrastructure/bootstrap',
     ],
-    {
-      timeoutMs: 10 * 60 * 1000,
-    },
+    { timeoutMs: 10 * 60 * 1000 },
   );
 
   bundleStore.set(bundleId, {
@@ -309,12 +335,6 @@ const deleteProvisioningBundle = async (bundleId: string) => {
   bundleStore.delete(bundleId);
   await rm(join(record.filePath, '..'), { force: true, recursive: true }).catch(() => {});
 };
-
-const setProvisioningRecord = (instanceRef: string, record: ProvisioningRecord) => {
-  provisioningStore.set(instanceRef, record);
-};
-
-const getProvisioningRecord = (instanceRef: string) => provisioningStore.get(instanceRef);
 
 const buildProvisioningEnvContent = async () => {
   const baseEnv = await getSecretEnvContent();
@@ -373,10 +393,162 @@ SAGE_ROOT=${SAGE_ROOT} SAGE_ENV_FILE=${REMOTE_ENV_FILE} bash ${SAGE_ROOT}/script
 `;
 };
 
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+
+const generateSlug = (request: CreateInstanceRequest) => {
+  const base = slugify(request.requestedSlug || request.name) || `sage-${Date.now()}`;
+  const suffix = randomUUID().slice(0, 6);
+  return `${base}-${suffix}`.slice(0, 63);
+};
+
+const buildPrimaryDomain = (slug: string) => (PRIMARY_DOMAIN_SUFFIX ? `${slug}.${PRIMARY_DOMAIN_SUFFIX}` : null);
+
+const mapInstanceRowToStatus = (instance: InstanceRow, job?: InstanceJobRow | null): InstanceStatusResponse => ({
+  image: instance.image || undefined,
+  instanceId: instance.id,
+  dropletId: instance.droplet_id || undefined,
+  ipAddress: instance.ip_address || undefined,
+  name: instance.droplet_name || `${instance.slug}-instance`,
+  ownerUserId: instance.owner_user_id,
+  primaryDomain: instance.primary_domain,
+  region: instance.region || undefined,
+  size: instance.size || undefined,
+  slug: instance.slug,
+  status: (job?.status || instance.status) as InstanceProvisioningStatus,
+  step: job?.step || undefined,
+  readyAt: instance.ready_at,
+  deletedAt: instance.deleted_at,
+  error: job?.error_message || undefined,
+});
+
+const findInstance = async (instanceRef: string) => {
+  const supabase = getSupabaseAdmin();
+  const normalizedRef = instanceRef.trim();
+  const { data, error } = await supabase
+    .from('instances')
+    .select('*')
+    .or(
+      [
+        `id.eq.${normalizedRef}`,
+        `droplet_id.eq.${normalizedRef}`,
+        `droplet_name.eq.${normalizedRef}`,
+        `slug.eq.${normalizedRef}`,
+        `ip_address.eq.${normalizedRef}`,
+        `primary_domain.eq.${normalizedRef}`,
+      ].join(','),
+    )
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load instance metadata: ${error.message}`);
+  }
+
+  return data as InstanceRow | null;
+};
+
+const findLatestJob = async (instanceId: string) => {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('instance_jobs')
+    .select('*')
+    .eq('instance_id', instanceId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load instance job metadata: ${error.message}`);
+  }
+
+  return data as InstanceJobRow | null;
+};
+
+const updateInstance = async (instanceId: string, patch: Record<string, unknown>) => {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from('instances')
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', instanceId);
+
+  if (error) {
+    throw new Error(`Failed to update instance metadata: ${error.message}`);
+  }
+};
+
+const createJob = async (instance: InstanceRow) => {
+  const supabase = getSupabaseAdmin();
+  const payload = {
+    instance_id: instance.id,
+    owner_user_id: instance.owner_user_id,
+    status: 'queued',
+    step: 'creating_droplet',
+  };
+  const { data, error } = await supabase.from('instance_jobs').insert(payload).select('*').single();
+
+  if (error) {
+    throw new Error(`Failed to create instance job metadata: ${error.message}`);
+  }
+
+  return data as InstanceJobRow;
+};
+
+const updateJob = async (jobId: string, patch: Record<string, unknown>) => {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from('instance_jobs')
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', jobId);
+
+  if (error) {
+    throw new Error(`Failed to update instance job metadata: ${error.message}`);
+  }
+};
+
+const createInstanceMetadata = async (request: CreateInstanceRequest) => {
+  const supabase = getSupabaseAdmin();
+  const slug = generateSlug(request);
+  const primaryDomain = buildPrimaryDomain(slug);
+  const dropletName = request.name.trim();
+  const region = request.region?.trim() || DEFAULT_REGION;
+
+  const payload = {
+    owner_user_id: request.ownerUserId.trim(),
+    droplet_name: dropletName,
+    slug,
+    primary_domain: primaryDomain,
+    region,
+    size: DEFAULT_SIZE,
+    image: DEFAULT_IMAGE,
+    status: 'queued',
+  };
+
+  const { data, error } = await supabase.from('instances').insert(payload).select('*').single();
+
+  if (error) {
+    throw new Error(`Failed to create instance metadata: ${error.message}`);
+  }
+
+  return data as InstanceRow;
+};
+
 const createDroplet = async (
   request: CreateInstanceRequest,
   userData: string,
-): Promise<CreatedInstanceResponse> => {
+): Promise<{ createdAt: string; dropletId: string; ipAddress: string; name: string; region: string; size: string; image: string }> => {
   const name = request.name.trim();
   const region = request.region?.trim() || DEFAULT_REGION;
   const size = DEFAULT_SIZE;
@@ -414,8 +586,7 @@ const createDroplet = async (
     const output = await runDoctl(args);
     const [droplet] = JSON.parse(output) as DropletRecord[];
     const ipAddress =
-      droplet?.public_ipv4 ||
-      droplet?.networks?.v4?.find((network) => network.type === 'public')?.ip_address;
+      droplet?.public_ipv4 || droplet?.networks?.v4?.find((network) => network.type === 'public')?.ip_address;
 
     if (!ipAddress) {
       throw new Error('DigitalOcean did not return a public IPv4 address.');
@@ -423,13 +594,12 @@ const createDroplet = async (
 
     return {
       createdAt: new Date().toISOString(),
-      image,
-      instanceId: String(droplet.id),
+      dropletId: String(droplet.id),
       ipAddress,
       name: droplet.name,
       region,
       size,
-      status: 'created',
+      image,
     };
   } finally {
     await unlink(tempUserDataPath).catch(() => {});
@@ -455,102 +625,47 @@ const waitForHttp = async (url: string, timeoutMs: number) => {
   throw new Error(`Timed out waiting for ${url}.`);
 };
 
-const waitForRemoteOpenClaw = async (ipAddress: string) => {
-  const deadline = Date.now() + DEPLOY_WAIT_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://${ipAddress}/api/health`);
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // ignore while waiting
-    }
-
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
-  }
-
-  throw new Error(`Timed out waiting for OpenClaw on ${ipAddress}.`);
+const waitForWrapperHealth = async (ipAddress: string) => {
+  await waitForHttp(`http://${ipAddress}/api/health`, DEPLOY_WAIT_TIMEOUT_MS);
 };
 
-const verifyChatProxy = async (ipAddress: string) => {
-  const deadline = Date.now() + DEPLOY_WAIT_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://${ipAddress}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: 'Reply with ready.',
-          conversationId: `provisioning-check-${Date.now()}`,
-          communicationType: 'chat',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Chat proxy health check failed with status ${response.status}.`);
-      }
-
-      const body = await response.text();
-      if (!body.includes('data:')) {
-        throw new Error('Chat proxy health check returned an unexpected response body.');
-      }
-
-      return;
-    } catch {
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
-    }
-  }
-
-  throw new Error('Timed out waiting for the chat proxy to become ready.');
-};
-
-const overlayProvisioningState = (state: {
-  error?: string;
-  instanceId: string;
-  name: string;
-  status: string;
-}) => {
-  const record = getProvisioningRecord(state.instanceId) || getProvisioningRecord(state.name);
-
-  if (!record) {
-    return state;
-  }
-
-  return {
-    ...state,
-    error: record.error,
-    status: record.status,
-  };
-};
-
-const finalizeProvisioning = async (droplet: CreatedInstanceResponse, bundleId: string) => {
-  setProvisioningRecord(droplet.instanceId, { status: 'provisioning' });
-  setProvisioningRecord(droplet.name, { status: 'provisioning' });
-
+const finalizeProvisioning = async (instance: InstanceRow, job: InstanceJobRow, ipAddress: string, bundleId: string) => {
   try {
-    await waitForRemoteOpenClaw(droplet.ipAddress);
-    await waitForHttp(`http://${droplet.ipAddress}/api/health`, DEPLOY_WAIT_TIMEOUT_MS);
-    await verifyChatProxy(droplet.ipAddress);
-    setProvisioningRecord(droplet.instanceId, { status: 'ready' });
-    setProvisioningRecord(droplet.name, { status: 'ready' });
+    await updateJob(job.id, {
+      status: 'provisioning',
+      step: 'waiting_for_wrapper',
+      error_message: null,
+    });
+    await waitForWrapperHealth(ipAddress);
+    await updateInstance(instance.id, {
+      status: 'ready',
+      ready_at: new Date().toISOString(),
+    });
+    await updateJob(job.id, {
+      status: 'ready',
+      step: 'ready',
+      completed_at: new Date().toISOString(),
+      error_message: null,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown provisioning error';
-    setProvisioningRecord(droplet.instanceId, { status: 'error', error: message });
-    setProvisioningRecord(droplet.name, { status: 'error', error: message });
+    await updateInstance(instance.id, {
+      status: 'error',
+    }).catch(() => {});
+    await updateJob(job.id, {
+      status: 'error',
+      step: 'error',
+      error_message: message,
+      completed_at: new Date().toISOString(),
+    }).catch(() => {});
   } finally {
     await deleteProvisioningBundle(bundleId);
   }
 };
 
-const provisionInstance = async (
-  request: CreateInstanceRequest,
-  publicBaseUrl: string,
-): Promise<CreatedInstanceResponse> => {
+const provisionInstance = async (request: CreateInstanceRequest, publicBaseUrl: string): Promise<CreatedInstanceResponse> => {
+  const instance = await createInstanceMetadata(request);
+  const job = await createJob(instance);
   const envContent = await buildProvisioningEnvContent();
   const bundleId = await createProvisioningBundle();
 
@@ -562,88 +677,133 @@ const provisionInstance = async (
         envContent,
       }),
     );
-    void finalizeProvisioning(droplet, bundleId);
+
+    await updateInstance(instance.id, {
+      droplet_id: droplet.dropletId,
+      droplet_name: droplet.name,
+      ip_address: droplet.ipAddress,
+      region: droplet.region,
+      size: droplet.size,
+      image: droplet.image,
+      status: 'provisioning',
+    });
+    await updateJob(job.id, {
+      status: 'provisioning',
+      step: 'bootstrapping_droplet',
+      error_message: null,
+    });
+
+    void finalizeProvisioning(instance, job, droplet.ipAddress, bundleId);
 
     return {
-      ...droplet,
-      status: 'provisioning' as const,
+      createdAt: droplet.createdAt,
+      image: droplet.image,
+      instanceId: instance.id,
+      dropletId: droplet.dropletId,
+      ipAddress: droplet.ipAddress,
+      name: droplet.name,
+      ownerUserId: instance.owner_user_id,
+      primaryDomain: instance.primary_domain,
+      region: droplet.region,
+      size: droplet.size,
+      slug: instance.slug,
+      status: 'provisioning',
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown provisioning error';
+    await updateInstance(instance.id, {
+      status: 'error',
+    }).catch(() => {});
+    await updateJob(job.id, {
+      status: 'error',
+      step: 'error',
+      error_message: message,
+      completed_at: new Date().toISOString(),
+    }).catch(() => {});
     await deleteProvisioningBundle(bundleId);
     throw error;
   }
 };
 
 const destroyInstance = async (instanceRef: string): Promise<DeletedInstanceResponse> => {
-  const droplet = await findDroplet(instanceRef);
+  const instance = await findInstance(instanceRef);
 
-  if (!droplet) {
-    throw new Error(`Droplet "${instanceRef}" was not found.`);
+  if (!instance) {
+    throw new Error(`Instance "${instanceRef}" was not found.`);
   }
 
-  await runDoctl(['compute', 'droplet', 'delete', '--force', String(droplet.id)]);
-  provisioningStore.delete(String(droplet.id));
-  provisioningStore.delete(droplet.name);
+  if (instance.droplet_id) {
+    await runDoctl(['compute', 'droplet', 'delete', '--force', String(instance.droplet_id)]);
+  }
+
+  await updateInstance(instance.id, {
+    status: 'deleted',
+    deleted_at: new Date().toISOString(),
+  });
+
+  const latestJob = await findLatestJob(instance.id);
+  if (latestJob) {
+    await updateJob(latestJob.id, {
+      status: 'deleted',
+      step: 'deleted',
+      completed_at: new Date().toISOString(),
+    });
+  }
 
   return {
     deletedAt: new Date().toISOString(),
-    instanceId: String(droplet.id),
-    name: droplet.name,
+    instanceId: instance.id,
+    dropletId: instance.droplet_id || undefined,
+    name: instance.droplet_name || instance.slug,
+    ownerUserId: instance.owner_user_id,
+    primaryDomain: instance.primary_domain,
+    slug: instance.slug,
     status: 'deleted',
   };
 };
 
 const getInstanceStatus = async (instanceRef: string): Promise<InstanceStatusResponse | null> => {
-  const droplet = await findDroplet(instanceRef);
+  const instance = await findInstance(instanceRef);
 
-  if (!droplet) {
+  if (!instance) {
     return null;
   }
 
-  const provisioningState = overlayProvisioningState({
-    instanceId: String(droplet.id),
-    name: droplet.name,
-    status: droplet.status || 'unknown',
-  });
-
-  return {
-    image: droplet.image?.slug,
-    instanceId: String(droplet.id),
-    ipAddress:
-      droplet.public_ipv4 ||
-      droplet.networks?.v4?.find((network) => network.type === 'public')?.ip_address,
-    name: droplet.name,
-    region: droplet.region?.slug,
-    size: droplet.size_slug || droplet.size?.slug,
-    status: provisioningState.status,
-    error: provisioningState.error,
-  };
+  const latestJob = await findLatestJob(instance.id);
+  return mapInstanceRowToStatus(instance, latestJob);
 };
 
 const listInstanceStatuses = async (): Promise<InstanceListResponse> => {
-  const droplets = await listDroplets();
+  const supabase = getSupabaseAdmin();
+  const { data: instances, error } = await supabase
+    .from('instances')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to load instance list: ${error.message}`);
+  }
+
+  const jobsByInstanceId = new Map<string, InstanceJobRow>();
+  const { data: jobs, error: jobsError } = await supabase
+    .from('instance_jobs')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (jobsError) {
+    throw new Error(`Failed to load instance jobs: ${jobsError.message}`);
+  }
+
+  for (const job of (jobs || []) as InstanceJobRow[]) {
+    if (!jobsByInstanceId.has(job.instance_id)) {
+      jobsByInstanceId.set(job.instance_id, job);
+    }
+  }
 
   return {
-    instances: droplets.map((droplet) => {
-      const provisioningState = overlayProvisioningState({
-        instanceId: String(droplet.id),
-        name: droplet.name,
-        status: droplet.status || 'unknown',
-      });
-
-      return {
-        image: droplet.image?.slug,
-        instanceId: String(droplet.id),
-        ipAddress:
-          droplet.public_ipv4 ||
-          droplet.networks?.v4?.find((network) => network.type === 'public')?.ip_address,
-        name: droplet.name,
-        region: droplet.region?.slug,
-        size: droplet.size_slug || droplet.size?.slug,
-        status: provisioningState.status,
-        error: provisioningState.error,
-      };
-    }),
+    instances: ((instances || []) as InstanceRow[]).map((instance) =>
+      mapInstanceRowToStatus(instance, jobsByInstanceId.get(instance.id) || null),
+    ),
   };
 };
 
@@ -697,6 +857,8 @@ const server = createServer(async (req, res) => {
           error: 'Invalid create-instance request body.',
           expected: {
             name: 'string',
+            ownerUserId: 'string',
+            requestedSlug: 'string?',
             region: 'string?',
           },
         });
@@ -719,7 +881,7 @@ const server = createServer(async (req, res) => {
       const response = await getInstanceStatus(instanceRef);
 
       if (!response) {
-        sendJson(res, 404, { error: `Droplet "${instanceRef}" was not found.` });
+        sendJson(res, 404, { error: `Instance "${instanceRef}" was not found.` });
         return;
       }
 

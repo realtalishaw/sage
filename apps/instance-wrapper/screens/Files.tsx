@@ -12,6 +12,7 @@ import { getFileTypeIcon } from '../utils/fileTypeIcon';
 import { supabase } from '../src/integrations/supabase/client';
 import { fetchUserArtifacts, toDisplayFile, toDisplayFolder } from '../services/artifacts';
 import { useUserFiles } from '../hooks/useUserFiles';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 import { toast } from 'sonner';
 import { isToday, isWithinInterval, subDays, parseISO, format } from 'date-fns';
 
@@ -722,9 +723,11 @@ const Files: React.FC = () => {
         if (!success) throw new Error('Failed to delete');
       } else {
         // Artifact file
+        const instance = await getCurrentInstanceAccess();
         const { error } = await supabase
           .from('artifacts')
           .delete()
+          .eq('instance_id', instance.instanceId)
           .eq('id', selectedFile.id);
 
         if (error) throw error;
@@ -764,6 +767,7 @@ const Files: React.FC = () => {
         if (!success) throw new Error('Failed to rename');
       } else {
         // Artifact file
+        const instance = await getCurrentInstanceAccess();
         const { error } = await supabase
           .from('artifacts')
           .update({ 
@@ -771,6 +775,7 @@ const Files: React.FC = () => {
               display_name: newName 
             } 
           })
+          .eq('instance_id', instance.instanceId)
           .eq('id', selectedFile.id);
 
         if (error) throw error;
@@ -908,8 +913,9 @@ const Files: React.FC = () => {
         }
         
         setUserEmail(user.email || undefined);
+        const instance = await getCurrentInstanceAccess();
         
-        const { files: artifactFiles, folders: artifactFolders } = await fetchUserArtifacts(user.id);
+        const { files: artifactFiles, folders: artifactFolders } = await fetchUserArtifacts(user.id, instance.instanceId);
         
         console.log('Fetched files:', artifactFiles.length, 'folders:', artifactFolders.length);
         

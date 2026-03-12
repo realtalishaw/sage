@@ -2,13 +2,37 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { supabase } from '@/src/integrations/supabase/client';
-import { generateApiToken } from '../services/authToken';
 
-interface Props {
-  onLogin: (email: string) => void;
-}
+const COUNTRY_CODE_OPTIONS = [
+  { value: '+1', label: '🇺🇸 +1' },
+  { value: '+44', label: '🇬🇧 +44' },
+  { value: '+91', label: '🇮🇳 +91' },
+  { value: '+86', label: '🇨🇳 +86' },
+  { value: '+55', label: '🇧🇷 +55' },
+  { value: '+52', label: '🇲🇽 +52' },
+  { value: '+49', label: '🇩🇪 +49' },
+  { value: '+33', label: '🇫🇷 +33' },
+  { value: '+39', label: '🇮🇹 +39' },
+  { value: '+34', label: '🇪🇸 +34' },
+  { value: '+81', label: '🇯🇵 +81' },
+  { value: '+82', label: '🇰🇷 +82' },
+  { value: '+61', label: '🇦🇺 +61' },
+  { value: '+65', label: '🇸🇬 +65' },
+  { value: '+971', label: '🇦🇪 +971' },
+  { value: 'custom', label: 'other' },
+];
 
-const Login: React.FC<Props> = ({ onLogin }) => {
+const getLoginErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Unable to sign in.';
+
+  if (message.toLowerCase().includes('unsupported phone provider')) {
+    return 'Phone login is not enabled in Supabase yet. Turn on phone auth and add an SMS provider first.';
+  }
+
+  return message;
+};
+
+const Login: React.FC = () => {
   const [countryCode, setCountryCode] = React.useState('+1');
   const [customCountryCode, setCustomCountryCode] = React.useState('');
   const [phoneNumber, setPhoneNumber] = React.useState('');
@@ -24,6 +48,13 @@ const Login: React.FC<Props> = ({ onLogin }) => {
   const isCustomCountryCode = countryCode === 'custom';
   const resolvedCountryCode = isCustomCountryCode ? customCountryCode : countryCode;
   const isVerificationCodeComplete = verificationCode.every((digit) => digit.length === 1);
+
+  const normalizedPhone = React.useMemo(() => {
+    const digits = phoneNumber.replace(/\D/g, '');
+    const code = resolvedCountryCode.replace(/[^\d+]/g, '');
+    return `${code}${digits}`.trim();
+  }, [phoneNumber, resolvedCountryCode]);
+
   const phoneDisplay = `${resolvedCountryCode.trim()} ${phoneNumber}`.trim();
 
   React.useEffect(() => {
@@ -34,28 +65,32 @@ const Login: React.FC<Props> = ({ onLogin }) => {
     };
   }, []);
 
-  const completeSignIn = React.useCallback(async () => {
-    const normalizedPhone = phoneNumber.replace(/\D/g, '');
-    const normalizedCountryCode = resolvedCountryCode.trim();
+  const sendOtp = React.useCallback(async () => {
+    if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
+      setError('Please enter your phone number.');
+      return false;
+    }
 
-    if (!normalizedCountryCode || !normalizedPhone) {
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      phone: normalizedPhone,
+    });
+
+    if (signInError) {
+      throw signInError;
+    }
+
+    return true;
+  }, [normalizedPhone]);
+
+  const completeSignIn = React.useCallback(async () => {
+    if (!normalizedPhone || !normalizedPhone.startsWith('+')) {
       setError('Please enter your phone number.');
       setStep('phone');
       return;
     }
 
     const enteredCode = verificationCode.join('');
-
-    if (enteredCode !== '123456') {
-      setError('Incorrect code. Try again.');
-      setIsShaking(true);
-      window.setTimeout(() => {
-        setIsShaking(false);
-      }, 420);
-      window.setTimeout(() => {
-        setVerificationCode(['', '', '', '', '', '']);
-        codeInputRefs.current[0]?.focus();
-      }, 420);
+    if (enteredCode.length !== 6) {
       return;
     }
 
@@ -63,21 +98,20 @@ const Login: React.FC<Props> = ({ onLogin }) => {
     setError('');
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email: `${normalizedCountryCode.replace('+', '')}${normalizedPhone}@sage.local`,
-        password: enteredCode,
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        phone: normalizedPhone,
+        token: enteredCode,
+        type: 'sms',
       });
 
-      if (signInError) throw signInError;
-
-      if (data.user) {
-        await generateApiToken();
-        await onLogin(phoneDisplay);
-        navigate('/app/home');
+      if (verifyError) {
+        throw verifyError;
       }
+
+      navigate('/app/home');
     } catch (err: any) {
       console.error('Login error:', err);
-      setError(err.message || 'Incorrect code. Try again.');
+      setError(getLoginErrorMessage(err) || 'Incorrect code. Try again.');
       setIsShaking(true);
       window.setTimeout(() => {
         setIsShaking(false);
@@ -89,7 +123,7 @@ const Login: React.FC<Props> = ({ onLogin }) => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, onLogin, phoneDisplay, phoneNumber, resolvedCountryCode, verificationCode]);
+  }, [navigate, normalizedPhone, verificationCode]);
 
   React.useEffect(() => {
     if (step === 'verify' && isVerificationCodeComplete && !loading) {
@@ -102,12 +136,15 @@ const Login: React.FC<Props> = ({ onLogin }) => {
     setError('');
     setResendNotice('');
 
-    const normalizedPhone = phoneNumber.replace(/\D/g, '');
-    const normalizedCountryCode = resolvedCountryCode.trim();
+    if (step !== 'phone') {
+      return;
+    }
 
-    if (step === 'phone') {
-      if (!normalizedCountryCode || !normalizedPhone) {
-        setError('Please enter your phone number.');
+    setLoading(true);
+
+    try {
+      const sent = await sendOtp();
+      if (!sent) {
         return;
       }
 
@@ -115,7 +152,11 @@ const Login: React.FC<Props> = ({ onLogin }) => {
       window.setTimeout(() => {
         codeInputRefs.current[0]?.focus();
       }, 0);
-      return;
+    } catch (err: any) {
+      console.error('Phone sign-in error:', err);
+      setError(getLoginErrorMessage(err) || 'Unable to send verification code.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -131,20 +172,34 @@ const Login: React.FC<Props> = ({ onLogin }) => {
     }
   };
 
-  const resendCode = () => {
+  const resendCode = async () => {
     setError('');
-    setResendNotice(`Code resent to ${phoneDisplay || 'your phone'}.`);
-    setVerificationCode(['', '', '', '', '', '']);
-    if (resendTimeoutRef.current !== null) {
-      window.clearTimeout(resendTimeoutRef.current);
+    setLoading(true);
+
+    try {
+      const sent = await sendOtp();
+      if (!sent) {
+        return;
+      }
+
+      setResendNotice(`Code resent to ${phoneDisplay || 'your phone'}.`);
+      setVerificationCode(['', '', '', '', '', '']);
+      if (resendTimeoutRef.current !== null) {
+        window.clearTimeout(resendTimeoutRef.current);
+      }
+      resendTimeoutRef.current = window.setTimeout(() => {
+        setResendNotice('');
+        resendTimeoutRef.current = null;
+      }, 3000);
+      window.setTimeout(() => {
+        codeInputRefs.current[0]?.focus();
+      }, 0);
+    } catch (err: any) {
+      console.error('Resend code error:', err);
+      setError(getLoginErrorMessage(err) || 'Unable to resend verification code.');
+    } finally {
+      setLoading(false);
     }
-    resendTimeoutRef.current = window.setTimeout(() => {
-      setResendNotice('');
-      resendTimeoutRef.current = null;
-    }, 3000);
-    window.setTimeout(() => {
-      codeInputRefs.current[0]?.focus();
-    }, 0);
   };
 
   return (
@@ -170,22 +225,11 @@ const Login: React.FC<Props> = ({ onLogin }) => {
                   onChange={(e) => setCountryCode(e.target.value)}
                   className="h-11 w-full bg-[#303030] border border-white/10 rounded-xl px-3 text-sm focus:outline-none focus:border-white/30 focus:bg-[#3a3a3a] transition-all"
                 >
-                  <option value="+1">🇺🇸 +1</option>
-                  <option value="+44">🇬🇧 +44</option>
-                  <option value="+91">🇮🇳 +91</option>
-                  <option value="+86">🇨🇳 +86</option>
-                  <option value="+55">🇧🇷 +55</option>
-                  <option value="+52">🇲🇽 +52</option>
-                  <option value="+49">🇩🇪 +49</option>
-                  <option value="+33">🇫🇷 +33</option>
-                  <option value="+39">🇮🇹 +39</option>
-                  <option value="+34">🇪🇸 +34</option>
-                  <option value="+81">🇯🇵 +81</option>
-                  <option value="+82">🇰🇷 +82</option>
-                  <option value="+61">🇦🇺 +61</option>
-                  <option value="+65">🇸🇬 +65</option>
-                  <option value="+971">🇦🇪 +971</option>
-                  <option value="custom">other</option>
+                  {COUNTRY_CODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <div className={`grid min-w-0 gap-2 ${isCustomCountryCode ? 'grid-cols-[92px_minmax(0,1fr)]' : 'grid-cols-1'}`}>
                   {isCustomCountryCode ? (
@@ -244,7 +288,9 @@ const Login: React.FC<Props> = ({ onLogin }) => {
                     <span className="text-white/30">didn't get a code?</span>
                     <button
                       type="button"
-                      onClick={resendCode}
+                      onClick={() => {
+                        void resendCode();
+                      }}
                       className="text-white/50 hover:text-white transition-colors"
                     >
                       resend code
@@ -255,15 +301,15 @@ const Login: React.FC<Props> = ({ onLogin }) => {
             </div>
           )}
 
-          {error && (
+          {error ? (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
               <p className="text-red-400 text-xs font-medium">{error}</p>
             </div>
-          )}
+          ) : null}
 
           {step === 'phone' ? (
             <Button variant="primary" className="w-full h-11 mt-2" disabled={loading}>
-              Sign in
+              {loading ? 'Sending code...' : 'Sign in'}
             </Button>
           ) : loading ? (
             <Button variant="primary" className="w-full h-11 mt-2" disabled={true}>

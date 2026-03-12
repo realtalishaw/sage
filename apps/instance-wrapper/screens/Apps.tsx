@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { GIAApp, GIAFlow, FlowRun } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../src/integrations/supabase/client';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 
 interface DatabaseApp {
   id: string;
@@ -124,10 +125,12 @@ const Apps: React.FC = () => {
           setLoading(false);
           return;
         }
+        const instance = await getCurrentInstanceAccess();
 
         const { data, error } = await supabase
           .from('apps')
           .select('id, app_name, app_slug, description, status, metadata, created_at')
+          .eq('instance_id', instance.instanceId)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 

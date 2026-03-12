@@ -1,3 +1,5 @@
+import { supabase } from '@/src/integrations/supabase/client';
+
 export interface ChatRequest {
   query: string;
   communication_type: "chat" | "text" | "email";
@@ -32,9 +34,18 @@ export const sendChatMessage = async (
   conversationId?: string,
   onChunk?: (chunk: string) => void,
 ): Promise<string> => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('You must be signed in to use Sage chat.');
+  }
+
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: {
+      authorization: `Bearer ${session.access_token}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({

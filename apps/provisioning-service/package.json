@@ -10,7 +10,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@sage/instance-contracts": "workspace:*"
+    "@sage/instance-contracts": "workspace:*",
+    "@supabase/supabase-js": "^2.90.1"
   },
   "devDependencies": {
     "@types/node": "^22.16.5",

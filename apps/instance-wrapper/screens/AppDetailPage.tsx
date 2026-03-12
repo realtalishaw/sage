@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, RefreshCw, Loader2, X } from 'lucide-react';
 import { supabase } from '../src/integrations/supabase/client';
 import { getSandboxUrl, refreshSandbox, SandboxResponse } from '../services/sandbox';
+import { getCurrentInstanceAccess } from '../services/instanceAccess';
 
 interface DatabaseApp {
   id: string;
@@ -58,10 +59,12 @@ const AppDetailPage: React.FC = () => {
           setLoading(false);
           return;
         }
+        const instance = await getCurrentInstanceAccess();
 
         const { data, error: fetchError } = await supabase
           .from('apps')
           .select('id, app_name, app_slug, description, status, metadata, created_at')
+          .eq('instance_id', instance.instanceId)
           .eq('id', appId)
           .eq('user_id', user.id)
           .single();

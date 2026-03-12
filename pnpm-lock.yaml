@@ -340,6 +340,9 @@ importers:
       '@sage/instance-contracts':
         specifier: workspace:*
         version: link:../../packages/instance-contracts
+      '@supabase/supabase-js':
+        specifier: ^2.90.1
+        version: 2.99.0
     devDependencies:
       '@types/node':
         specifier: ^22.16.5
