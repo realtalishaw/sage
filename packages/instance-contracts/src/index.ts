@@ -5,5 +5,6 @@
 // boundary: how Sage talks to a user instance and how the instance talks back.
 export * from './auth';
 export * from './callback';
+export * from './provisioning';
 export * from './status';
 export * from './task';

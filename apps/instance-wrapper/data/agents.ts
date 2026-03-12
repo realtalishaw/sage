@@ -1,0 +1,67 @@
+import { SageAgent } from '../types';
+
+export const mockAgents: SageAgent[] = [
+  {
+    id: 'agent-marketing',
+    name: 'Jim',
+    title: 'Marketing Agent',
+    status: 'online',
+    avatar: 'J',
+    bio: 'Runs campaign drafts, launch messaging, and audience segmentation work.',
+    skills: ['positioning', 'campaign strategy', 'copywriting', 'launch planning'],
+    tools: ['gmail', 'slack', 'notion', 'canva'],
+    activeTasks: ['Refining homepage messaging', 'Preparing Q2 launch campaign'],
+    logs: [
+      { id: 'jim-1', timestamp: '09:12', message: 'drafted a revised landing page headline set for the spring launch.' },
+      { id: 'jim-2', timestamp: '10:04', message: 'pulled channel performance notes into the campaign brief.' },
+      { id: 'jim-3', timestamp: '11:21', message: 'queued a follow-up task to tighten audience segmentation.' },
+    ],
+  },
+  {
+    id: 'agent-engineering',
+    name: 'Sally',
+    title: 'Engineering Agent',
+    status: 'online',
+    avatar: 'S',
+    bio: 'Handles product specs, bug triage, and technical execution planning.',
+    skills: ['system design', 'bug triage', 'implementation planning', 'code review'],
+    tools: ['github', 'linear', 'slack', 'figma'],
+    activeTasks: ['Reviewing wrapper auth flow', 'Planning agent runtime model'],
+    logs: [
+      { id: 'sally-1', timestamp: '08:44', message: 'reviewed the login verification flow and noted UI edge cases.' },
+      { id: 'sally-2', timestamp: '09:37', message: 'outlined the sub-agent architecture for the wrapper shell.' },
+      { id: 'sally-3', timestamp: '10:50', message: 'flagged a route cleanup pass for the app surfaces.' },
+    ],
+  },
+  {
+    id: 'agent-ops',
+    name: 'Mara',
+    title: 'Operations Agent',
+    status: 'busy',
+    avatar: 'M',
+    bio: 'Keeps workflows moving across support, scheduling, and team operations.',
+    skills: ['operations', 'inbox triage', 'calendar management', 'process design'],
+    tools: ['calendar', 'gmail', 'slack', 'airtable'],
+    activeTasks: ['Organizing support queue', 'Preparing weekly operating review'],
+    logs: [
+      { id: 'mara-1', timestamp: 'Yesterday', message: 'closed out the weekly support digest and updated operating notes.' },
+      { id: 'mara-2', timestamp: 'Yesterday', message: 'prepared scheduling blocks for next week’s planning cadence.' },
+    ],
+  },
+  {
+    id: 'agent-research',
+    name: 'Noah',
+    title: 'Research Agent',
+    status: 'online',
+    avatar: 'N',
+    bio: 'Builds research briefs, competitor scans, and market synthesis reports.',
+    skills: ['research', 'market analysis', 'brief writing', 'synthesis'],
+    tools: ['notion', 'google drive', 'slack', 'search'],
+    activeTasks: ['Updating competitor landscape', 'Synthesizing user interview notes'],
+    logs: [
+      { id: 'noah-1', timestamp: '07:58', message: 'updated the competitor matrix with two new product launches.' },
+      { id: 'noah-2', timestamp: '09:05', message: 'summarized interview takeaways into a product opportunity brief.' },
+      { id: 'noah-3', timestamp: '10:32', message: 'queued a research task around enterprise onboarding patterns.' },
+    ],
+  },
+];

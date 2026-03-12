@@ -1,0 +1,8 @@
+{
+  "name": "GIA Private Alpha",
+  "description": "General Intelligence Agency: A proactive AI agent that learns your work and suggests next steps.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

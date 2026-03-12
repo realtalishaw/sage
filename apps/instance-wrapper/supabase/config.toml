@@ -1,0 +1,43 @@
+project_id = "wqeopjtdfpxifvrygcqt"
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.check-subscription]
+verify_jwt = false
+
+[functions.apply-referral-bonus]
+verify_jwt = false
+
+[functions.customer-portal]
+verify_jwt = false
+
+[functions.happenstance-lookup]
+verify_jwt = false
+
+[functions.tasks-api]
+verify_jwt = false
+
+[functions.composio-connections]
+verify_jwt = false
+
+[functions.composio-toolkits]
+verify_jwt = false
+
+[functions.composio-connect]
+verify_jwt = false
+
+[functions.submit-support-ticket]
+verify_jwt = false
+
+[functions.send-feedback-email]
+verify_jwt = false
+
+[functions.create-sandbox]
+verify_jwt = false
+
+[functions.send-invite-emails]
+verify_jwt = false
+
+[functions.send-access-request-email]
+verify_jwt = false

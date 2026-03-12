@@ -1,10 +1,20 @@
 {
   "name": "@sage/provisioning-service",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "echo 'Build provisioning-service'",
-    "dev": "echo 'Dev provisioning-service'",
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
     "lint": "echo 'Lint provisioning-service'",
+    "start": "node dist/server.js",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@sage/instance-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3"
   }
 }

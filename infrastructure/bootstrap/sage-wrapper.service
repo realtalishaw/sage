@@ -1,0 +1,23 @@
+[Unit]
+Description=Sage Instance Wrapper
+After=network-online.target sage-openclaw.service
+Wants=network-online.target
+Requires=sage-openclaw.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__SAGE_ROOT__/apps/instance-wrapper
+EnvironmentFile=__ENV_FILE__
+Environment=INSTANCE_WRAPPER_HOST=127.0.0.1
+Environment=INSTANCE_WRAPPER_PORT=3000
+Environment=OC_GATEWAY_BASE_URL=http://127.0.0.1:19001
+Environment=OC_CHAT_AGENT_ID=main
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

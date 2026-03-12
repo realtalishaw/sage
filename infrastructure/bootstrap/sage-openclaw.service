@@ -1,0 +1,23 @@
+[Unit]
+Description=Sage OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=__SAGE_ROOT__/forks/openclaw
+EnvironmentFile=__ENV_FILE__
+Environment=OPENCLAW_PROFILE=dev
+Environment=OPENCLAW_STATE_DIR=/opt/sage/openclaw
+Environment=OPENCLAW_CONFIG_PATH=/opt/sage/openclaw/openclaw.json
+Environment=OPENCLAW_SKIP_CHANNELS=1
+Environment=CLAWDBOT_SKIP_CHANNELS=1
+ExecStart=/usr/bin/env pnpm gateway:dev
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

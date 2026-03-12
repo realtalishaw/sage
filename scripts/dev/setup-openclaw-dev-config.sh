@@ -12,7 +12,7 @@ WORKSPACE_DIR="${SAGE_OC_WORKSPACE_DIR:-$STATE_DIR/workspace}"
 GATEWAY_PORT="${SAGE_OC_GATEWAY_PORT:-19001}"
 GATEWAY_TOKEN="${SAGE_OC_GATEWAY_TOKEN:-sage-dev-gateway-token}"
 HOOK_TOKEN="${SAGE_OC_HOOK_TOKEN:-sage-dev-hook-token}"
-PRIMARY_MODEL="${SAGE_OC_PRIMARY_MODEL:-openai/gpt-5.2-mini}"
+PRIMARY_MODEL="${SAGE_OC_PRIMARY_MODEL:-anthropic/claude-sonnet-4-5}"
 USER_TIMEZONE="${SAGE_OC_USER_TIMEZONE:-America/New_York}"
 CALLBACK_URL="${SAGE_OC_CALLBACK_URL:-}"
 CALLBACK_TOKEN="${SAGE_OC_CALLBACK_TOKEN:-}"
@@ -53,6 +53,13 @@ cat > "$CONFIG_PATH" <<EOF
     auth: {
       mode: "token",
       token: "$GATEWAY_TOKEN",
+    },
+    http: {
+      endpoints: {
+        chatCompletions: {
+          enabled: true,
+        },
+      },
     },
   },
 
@@ -106,4 +113,4 @@ if [ -n "$CALLBACK_URL" ]; then
 fi
 echo "Note:"
 echo "  You still need model credentials in the environment before real task execution will work."
-echo "  For the current default model that usually means OPENAI_API_KEY must be set."
+echo "  For the current default model that means ANTHROPIC_API_KEY must be set."
