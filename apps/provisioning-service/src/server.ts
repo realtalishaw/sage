@@ -78,6 +78,11 @@ type BundleRecord = {
   filePath: string;
 };
 
+type ProvisioningRecord = {
+  error?: string;
+  status: 'provisioning' | 'ready' | 'error';
+};
+
 type CommandOptions = {
   cwd?: string;
   input?: string;
@@ -85,6 +90,7 @@ type CommandOptions = {
 };
 
 const bundleStore = new Map<string, BundleRecord>();
+const provisioningStore = new Map<string, ProvisioningRecord>();
 
 const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => {
   res.statusCode = statusCode;
@@ -304,6 +310,12 @@ const deleteProvisioningBundle = async (bundleId: string) => {
   await rm(join(record.filePath, '..'), { force: true, recursive: true }).catch(() => {});
 };
 
+const setProvisioningRecord = (instanceRef: string, record: ProvisioningRecord) => {
+  provisioningStore.set(instanceRef, record);
+};
+
+const getProvisioningRecord = (instanceRef: string) => provisioningStore.get(instanceRef);
+
 const buildProvisioningEnvContent = async () => {
   const baseEnv = await getSecretEnvContent();
   const gatewayToken = randomUUID();
@@ -490,6 +502,44 @@ const verifyChatProxy = async (ipAddress: string) => {
   }
 };
 
+const overlayProvisioningState = (state: {
+  error?: string;
+  instanceId: string;
+  name: string;
+  status: string;
+}) => {
+  const record = getProvisioningRecord(state.instanceId) || getProvisioningRecord(state.name);
+
+  if (!record) {
+    return state;
+  }
+
+  return {
+    ...state,
+    error: record.error,
+    status: record.status,
+  };
+};
+
+const finalizeProvisioning = async (droplet: CreatedInstanceResponse, bundleId: string) => {
+  setProvisioningRecord(droplet.instanceId, { status: 'provisioning' });
+  setProvisioningRecord(droplet.name, { status: 'provisioning' });
+
+  try {
+    await waitForRemoteOpenClaw(droplet.ipAddress);
+    await waitForHttp(`http://${droplet.ipAddress}/api/health`, DEPLOY_WAIT_TIMEOUT_MS);
+    await verifyChatProxy(droplet.ipAddress);
+    setProvisioningRecord(droplet.instanceId, { status: 'ready' });
+    setProvisioningRecord(droplet.name, { status: 'ready' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown provisioning error';
+    setProvisioningRecord(droplet.instanceId, { status: 'error', error: message });
+    setProvisioningRecord(droplet.name, { status: 'error', error: message });
+  } finally {
+    await deleteProvisioningBundle(bundleId);
+  }
+};
+
 const provisionInstance = async (
   request: CreateInstanceRequest,
   publicBaseUrl: string,
@@ -505,14 +555,15 @@ const provisionInstance = async (
         envContent,
       }),
     );
+    void finalizeProvisioning(droplet, bundleId);
 
-    await waitForRemoteOpenClaw(droplet.ipAddress);
-    await waitForHttp(`http://${droplet.ipAddress}/api/health`, DEPLOY_WAIT_TIMEOUT_MS);
-    await verifyChatProxy(droplet.ipAddress);
-
-    return droplet;
-  } finally {
+    return {
+      ...droplet,
+      status: 'provisioning' as const,
+    };
+  } catch (error) {
     await deleteProvisioningBundle(bundleId);
+    throw error;
   }
 };
 
@@ -524,6 +575,8 @@ const destroyInstance = async (instanceRef: string): Promise<DeletedInstanceResp
   }
 
   await runDoctl(['compute', 'droplet', 'delete', '--force', String(droplet.id)]);
+  provisioningStore.delete(String(droplet.id));
+  provisioningStore.delete(droplet.name);
 
   return {
     deletedAt: new Date().toISOString(),
@@ -540,6 +593,12 @@ const getInstanceStatus = async (instanceRef: string): Promise<InstanceStatusRes
     return null;
   }
 
+  const provisioningState = overlayProvisioningState({
+    instanceId: String(droplet.id),
+    name: droplet.name,
+    status: droplet.status || 'unknown',
+  });
+
   return {
     image: droplet.image?.slug,
     instanceId: String(droplet.id),
@@ -549,7 +608,8 @@ const getInstanceStatus = async (instanceRef: string): Promise<InstanceStatusRes
     name: droplet.name,
     region: droplet.region?.slug,
     size: droplet.size_slug || droplet.size?.slug,
-    status: droplet.status || 'unknown',
+    status: provisioningState.status,
+    error: provisioningState.error,
   };
 };
 
@@ -557,17 +617,26 @@ const listInstanceStatuses = async (): Promise<InstanceListResponse> => {
   const droplets = await listDroplets();
 
   return {
-    instances: droplets.map((droplet) => ({
-      image: droplet.image?.slug,
-      instanceId: String(droplet.id),
-      ipAddress:
-        droplet.public_ipv4 ||
-        droplet.networks?.v4?.find((network) => network.type === 'public')?.ip_address,
-      name: droplet.name,
-      region: droplet.region?.slug,
-      size: droplet.size_slug || droplet.size?.slug,
-      status: droplet.status || 'unknown',
-    })),
+    instances: droplets.map((droplet) => {
+      const provisioningState = overlayProvisioningState({
+        instanceId: String(droplet.id),
+        name: droplet.name,
+        status: droplet.status || 'unknown',
+      });
+
+      return {
+        image: droplet.image?.slug,
+        instanceId: String(droplet.id),
+        ipAddress:
+          droplet.public_ipv4 ||
+          droplet.networks?.v4?.find((network) => network.type === 'public')?.ip_address,
+        name: droplet.name,
+        region: droplet.region?.slug,
+        size: droplet.size_slug || droplet.size?.slug,
+        status: provisioningState.status,
+        error: provisioningState.error,
+      };
+    }),
   };
 };
 
@@ -628,7 +697,7 @@ const server = createServer(async (req, res) => {
       }
 
       const response = await provisionInstance(body, publicBaseUrl);
-      sendJson(res, 201, response);
+      sendJson(res, 202, response);
       return;
     }
 

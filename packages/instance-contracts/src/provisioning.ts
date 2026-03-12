@@ -13,7 +13,8 @@ export interface CreatedInstanceResponse {
   name: string;
   region: string;
   size: string;
-  status: 'created';
+  status: 'created' | 'provisioning' | 'ready' | 'error';
+  error?: string;
 }
 
 export interface DeletedInstanceResponse {
@@ -31,6 +32,7 @@ export interface InstanceStatusResponse {
   region?: string;
   size?: string;
   status: string;
+  error?: string;
 }
 
 export interface InstanceListResponse {
