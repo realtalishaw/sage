@@ -14,6 +14,10 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/provisioning-service ./apps/provisioning-service
+COPY apps/instance-wrapper ./apps/instance-wrapper
+COPY forks/openclaw ./forks/openclaw
+COPY scripts/bootstrap ./scripts/bootstrap
+COPY infrastructure/bootstrap ./infrastructure/bootstrap
 
 RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @sage/shared-types build
