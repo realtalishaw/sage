@@ -36,8 +36,10 @@ const DEFAULT_TAGS = (process.env.SAGE_DO_TAGS || 'sage-instance')
 const API_BASE_URL = process.env.PROVISIONING_SERVICE_PUBLIC_URL || `http://${HOST}:${PORT}`;
 const SECRET_ENV_PATH = process.env.SAGE_PROVISIONING_SECRET_ENV_PATH || join(REPO_ROOT, '.secrets/.env');
 const SECRET_ENV_CONTENT = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT;
+const SECRET_ENV_CONTENT_B64 = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT_B64;
 const SSH_USER = process.env.SAGE_DO_SSH_USER || 'root';
 const SSH_PRIVATE_KEY = process.env.SAGE_DO_SSH_PRIVATE_KEY;
+const SSH_PRIVATE_KEY_B64 = process.env.SAGE_DO_SSH_PRIVATE_KEY_B64;
 const SSH_WAIT_TIMEOUT_MS = Number(process.env.SAGE_SSH_WAIT_TIMEOUT_MS || 5 * 60 * 1000);
 const DEPLOY_WAIT_TIMEOUT_MS = Number(process.env.SAGE_DEPLOY_WAIT_TIMEOUT_MS || 20 * 60 * 1000);
 const SAGE_ROOT = '/opt/sage';
@@ -91,6 +93,10 @@ const readJsonBody = async <T>(req: IncomingMessage): Promise<T> => {
 };
 
 const getSecretEnvContent = async () => {
+  if (SECRET_ENV_CONTENT_B64 && SECRET_ENV_CONTENT_B64.trim().length > 0) {
+    return Buffer.from(SECRET_ENV_CONTENT_B64, 'base64').toString('utf8').trim();
+  }
+
   if (SECRET_ENV_CONTENT && SECRET_ENV_CONTENT.trim().length > 0) {
     return SECRET_ENV_CONTENT.trim();
   }
@@ -100,14 +106,19 @@ const getSecretEnvContent = async () => {
 };
 
 const getSshIdentityPath = async () => {
-  if (!SSH_PRIVATE_KEY || SSH_PRIVATE_KEY.trim().length === 0) {
+  const sshPrivateKey =
+    SSH_PRIVATE_KEY_B64 && SSH_PRIVATE_KEY_B64.trim().length > 0
+      ? Buffer.from(SSH_PRIVATE_KEY_B64, 'base64').toString('utf8')
+      : SSH_PRIVATE_KEY;
+
+  if (!sshPrivateKey || sshPrivateKey.trim().length === 0) {
     return null;
   }
 
   if (!sshIdentityPathPromise) {
     sshIdentityPathPromise = (async () => {
       const tempFilePath = join(tmpdir(), `sage-provisioning-ssh-${Date.now()}.key`);
-      await writeFile(tempFilePath, `${SSH_PRIVATE_KEY.trim()}\n`, 'utf8');
+      await writeFile(tempFilePath, `${sshPrivateKey.trim()}\n`, 'utf8');
       await chmod(tempFilePath, 0o600);
       return tempFilePath;
     })();
@@ -233,6 +244,8 @@ const sshArgsFor = (ipAddress: string, remoteCommand?: string) => {
     'UserKnownHostsFile=/dev/null',
     '-o',
     'ConnectTimeout=10',
+    '-o',
+    'IdentitiesOnly=yes',
   ];
 
   return getSshIdentityPath().then((identityPath) => {
@@ -261,6 +274,8 @@ const scpArgsFor = (fromPath: string, toPath: string) =>
       'UserKnownHostsFile=/dev/null',
       '-o',
       'ConnectTimeout=10',
+      '-o',
+      'IdentitiesOnly=yes',
     ];
 
     if (identityPath) {
@@ -540,10 +555,13 @@ const listInstanceStatuses = async (): Promise<InstanceListResponse> => {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || `${HOST}:${PORT}`}`);
+    const publicBaseUrl = API_BASE_URL.includes('0.0.0.0')
+      ? `${(req.headers['x-forwarded-proto'] as string) || 'http'}://${req.headers.host || `${HOST}:${PORT}`}`
+      : API_BASE_URL;
 
     if (req.method === 'GET' && url.pathname === '/health') {
       const payload: ProvisioningHealthResponse = {
-        apiBaseUrl: API_BASE_URL,
+        apiBaseUrl: publicBaseUrl,
         defaultImage: DEFAULT_IMAGE,
         defaultRegion: DEFAULT_REGION,
         defaultSize: DEFAULT_SIZE,
