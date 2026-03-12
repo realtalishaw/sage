@@ -39,6 +39,7 @@ const API_BASE_URL = process.env.PROVISIONING_SERVICE_PUBLIC_URL || `http://${HO
 const SECRET_ENV_PATH = process.env.SAGE_PROVISIONING_SECRET_ENV_PATH || join(REPO_ROOT, '.secrets/.env');
 const SECRET_ENV_CONTENT = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT;
 const SECRET_ENV_CONTENT_B64 = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT_B64;
+const WRAPPER_ENV_PATH = process.env.SAGE_INSTANCE_WRAPPER_ENV_PATH || join(REPO_ROOT, 'apps/instance-wrapper/.env');
 const DEPLOY_WAIT_TIMEOUT_MS = Number(process.env.SAGE_DEPLOY_WAIT_TIMEOUT_MS || 20 * 60 * 1000);
 const BUNDLE_TTL_MS = Number(process.env.SAGE_PROVISIONING_BUNDLE_TTL_MS || 30 * 60 * 1000);
 const OPENCLAW_ARCHIVE_URL =
@@ -167,6 +168,77 @@ const getSecretEnvContent = async () => {
 
   await access(SECRET_ENV_PATH);
   return (await readFile(SECRET_ENV_PATH, 'utf8')).trim();
+};
+
+const parseEnvLines = (envText: string) => {
+  const envMap = new Map<string, string>();
+
+  for (const rawLine of envText.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    let value = line.slice(separatorIndex + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+
+    envMap.set(key, value);
+  }
+
+  return envMap;
+};
+
+const serializeEnvMap = (envMap: Map<string, string>) =>
+  [...envMap.entries()].map(([key, value]) => `${key}=${value}`).join('\n');
+
+const getWrapperBuildEnv = async () => {
+  const envMap = new Map<string, string>();
+
+  const applyIfPresent = (key: string, value?: string | null) => {
+    if (value && value.trim().length > 0) {
+      envMap.set(key, value.trim());
+    }
+  };
+
+  applyIfPresent('VITE_SUPABASE_URL', process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL);
+  applyIfPresent(
+    'VITE_SUPABASE_PUBLISHABLE_KEY',
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY,
+  );
+  applyIfPresent('VITE_SUPABASE_PROJECT_ID', process.env.VITE_SUPABASE_PROJECT_ID);
+
+  if (envMap.has('VITE_SUPABASE_URL') && envMap.has('VITE_SUPABASE_PUBLISHABLE_KEY')) {
+    return envMap;
+  }
+
+  try {
+    const wrapperEnvText = await readFile(WRAPPER_ENV_PATH, 'utf8');
+    const wrapperEnv = parseEnvLines(wrapperEnvText);
+    for (const key of ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY', 'VITE_SUPABASE_PROJECT_ID']) {
+      const value = wrapperEnv.get(key);
+      if (value && !envMap.has(key)) {
+        envMap.set(key, value);
+      }
+    }
+  } catch {
+    // ignore missing local wrapper env file and fail validation below
+  }
+
+  if (!envMap.has('VITE_SUPABASE_URL') || !envMap.has('VITE_SUPABASE_PUBLISHABLE_KEY')) {
+    throw new Error(
+      'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be available for droplet wrapper builds.',
+    );
+  }
+
+  return envMap;
 };
 
 const runProcess = async (command: string, args: string[], options: CommandOptions = {}) => {
@@ -337,17 +409,22 @@ const deleteProvisioningBundle = async (bundleId: string) => {
 };
 
 const buildProvisioningEnvContent = async () => {
-  const baseEnv = await getSecretEnvContent();
+  const baseEnv = parseEnvLines(await getSecretEnvContent());
+  const wrapperEnv = await getWrapperBuildEnv();
   const gatewayToken = randomUUID();
   const hookToken = randomUUID();
 
-  return [
-    baseEnv.trim(),
-    `SAGE_OC_GATEWAY_TOKEN=${gatewayToken}`,
-    `SAGE_OC_HOOK_TOKEN=${hookToken}`,
-    'OC_CHAT_AGENT_ID=main',
-    '',
-  ].join('\n');
+  for (const [key, value] of wrapperEnv.entries()) {
+    if (!baseEnv.has(key)) {
+      baseEnv.set(key, value);
+    }
+  }
+
+  baseEnv.set('SAGE_OC_GATEWAY_TOKEN', gatewayToken);
+  baseEnv.set('SAGE_OC_HOOK_TOKEN', hookToken);
+  baseEnv.set('OC_CHAT_AGENT_ID', 'main');
+
+  return `${serializeEnvMap(baseEnv)}\n`;
 };
 
 const buildBootstrapUserData = (params: { bundleUrl: string; envContent: string }) => {
