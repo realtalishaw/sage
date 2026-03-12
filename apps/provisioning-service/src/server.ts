@@ -475,26 +475,38 @@ const waitForRemoteOpenClaw = async (ipAddress: string) => {
 };
 
 const verifyChatProxy = async (ipAddress: string) => {
-  const response = await fetch(`http://${ipAddress}/api/chat`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      message: 'Reply with ready.',
-      conversationId: `provisioning-check-${Date.now()}`,
-      communicationType: 'chat',
-    }),
-  });
+  const deadline = Date.now() + DEPLOY_WAIT_TIMEOUT_MS;
 
-  if (!response.ok) {
-    throw new Error(`Chat proxy health check failed with status ${response.status}.`);
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`http://${ipAddress}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: 'Reply with ready.',
+          conversationId: `provisioning-check-${Date.now()}`,
+          communicationType: 'chat',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Chat proxy health check failed with status ${response.status}.`);
+      }
+
+      const body = await response.text();
+      if (!body.includes('data:')) {
+        throw new Error('Chat proxy health check returned an unexpected response body.');
+      }
+
+      return;
+    } catch {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
+    }
   }
 
-  const body = await response.text();
-  if (!body.includes('data:')) {
-    throw new Error('Chat proxy health check returned an unexpected response body.');
-  }
+  throw new Error('Timed out waiting for the chat proxy to become ready.');
 };
 
 const overlayProvisioningState = (state: {
