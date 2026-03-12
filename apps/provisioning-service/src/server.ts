@@ -214,6 +214,8 @@ const getWrapperBuildEnv = async () => {
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY,
   );
   applyIfPresent('VITE_SUPABASE_PROJECT_ID', process.env.VITE_SUPABASE_PROJECT_ID);
+  applyIfPresent('SUPABASE_URL', process.env.SUPABASE_URL);
+  applyIfPresent('SUPABASE_SERVICE_ROLE_KEY', process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   if (envMap.has('VITE_SUPABASE_URL') && envMap.has('VITE_SUPABASE_PUBLISHABLE_KEY')) {
     return envMap;

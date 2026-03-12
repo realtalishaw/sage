@@ -19,6 +19,7 @@ const SUPABASE_PUBLISHABLE_KEY =
   process.env.SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   'sb_publishable_uqyYIudFYpZp9VN8Gy2dpw_lhxBwOPu';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const PRIMARY_DOMAIN_SUFFIX = process.env.SAGE_PRIMARY_DOMAIN_SUFFIX || 'joinsage.app';
 
 const MIME_TYPES: Record<string, string> = {
@@ -38,6 +39,14 @@ const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     persistSession: false,
   },
 });
+const serviceRoleClient = SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
+  : null;
 
 type ChatRequestBody = {
   message?: string;
@@ -58,6 +67,10 @@ type AuthenticatedRequest = {
   user: {
     id: string;
   };
+};
+
+type LoginEligibilityRequest = {
+  phone?: string;
 };
 
 const sendJson = (res: ServerResponse, statusCode: number, payload: unknown) => {
@@ -93,6 +106,13 @@ const buildUserScopedClient = (token: string) =>
       },
     },
   });
+
+const normalizePhone = (phone: string) => {
+  const trimmed = phone.trim();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  return hasPlus ? `+${digits}` : digits;
+};
 
 const requireAuthenticatedUser = async (req: IncomingMessage, res: ServerResponse): Promise<AuthenticatedRequest | null> => {
   const token = getBearerToken(req);
@@ -159,6 +179,84 @@ const resolveInstanceAccess = async (req: IncomingMessage, auth: AuthenticatedRe
     primaryDomain: data.primary_domain,
     slug: data.slug,
   } satisfies InstanceAccessPayload;
+};
+
+const resolveInstanceAccessForServer = async (req: IncomingMessage) => {
+  if (!serviceRoleClient) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for instance ownership checks.');
+  }
+
+  const host = getRequestHost(req);
+  const slugMatch = host.endsWith(`.${PRIMARY_DOMAIN_SUFFIX}`)
+    ? host.slice(0, -(PRIMARY_DOMAIN_SUFFIX.length + 1))
+    : null;
+  const filters = [`ip_address.eq.${host}`, `primary_domain.eq.${host}`];
+
+  if (slugMatch) {
+    filters.push(`slug.eq.${slugMatch}`);
+  }
+
+  const { data, error } = await serviceRoleClient
+    .from('instances')
+    .select('id, owner_user_id, slug, primary_domain, ip_address, deleted_at')
+    .is('deleted_at', null)
+    .or(filters.join(','))
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to resolve instance for host: ${error.message}`);
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    instanceId: data.id,
+    ipAddress: data.ip_address || undefined,
+    ownerUserId: data.owner_user_id,
+    primaryDomain: data.primary_domain,
+    slug: data.slug,
+  } satisfies InstanceAccessPayload;
+};
+
+const isPhoneAllowedForInstance = async (req: IncomingMessage, phone: string) => {
+  if (!serviceRoleClient) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for login phone checks.');
+  }
+
+  const instance = await resolveInstanceAccessForServer(req);
+  if (!instance) {
+    return { allowed: false, reason: 'This Sage instance could not be resolved.' };
+  }
+
+  const { data: profile, error } = await serviceRoleClient
+    .from('profiles')
+    .select('phone_number')
+    .eq('id', instance.ownerUserId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load instance owner profile: ${error.message}`);
+  }
+
+  const ownerPhone = normalizePhone(profile?.phone_number || '');
+  if (!ownerPhone) {
+    return {
+      allowed: false,
+      reason: 'This Sage instance does not have an owner phone number configured yet.',
+    };
+  }
+
+  if (normalizePhone(phone) !== ownerPhone) {
+    return {
+      allowed: false,
+      reason: 'This phone number is not authorized for this Sage computer.',
+    };
+  }
+
+  return { allowed: true, instance };
 };
 
 const readJsonBody = async <T>(req: IncomingMessage): Promise<T> => {
@@ -281,6 +379,25 @@ const server = createServer(async (req, res) => {
       }
 
       sendJson(res, 200, access);
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/login/eligibility') {
+      const body = await readJsonBody<LoginEligibilityRequest>(req);
+      const phone = body.phone?.trim() || '';
+
+      if (!phone.startsWith('+')) {
+        sendJson(res, 400, { error: 'phone is required in E.164 format.' });
+        return;
+      }
+
+      const eligibility = await isPhoneAllowedForInstance(req, phone);
+      if (!eligibility.allowed) {
+        sendJson(res, 403, { allowed: false, error: eligibility.reason });
+        return;
+      }
+
+      sendJson(res, 200, { allowed: true });
       return;
     }
 

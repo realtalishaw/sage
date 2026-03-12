@@ -71,6 +71,21 @@ const Login: React.FC = () => {
       return false;
     }
 
+    const eligibilityResponse = await fetch('/api/login/eligibility', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        phone: normalizedPhone,
+      }),
+    });
+
+    if (!eligibilityResponse.ok) {
+      const payload = (await eligibilityResponse.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error || 'This phone number is not authorized for this Sage computer.');
+    }
+
     const { error: signInError } = await supabase.auth.signInWithOtp({
       phone: normalizedPhone,
     });
