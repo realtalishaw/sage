@@ -461,12 +461,7 @@ const waitForRemoteOpenClaw = async (ipAddress: string) => {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://${ipAddress}/api/health`);
-      if (!response.ok) {
-        throw new Error(`Wrapper health returned ${response.status}.`);
-      }
-
-      const payload = (await response.json()) as { openClaw?: { configured?: boolean; reachable?: boolean } };
-      if (payload.openClaw?.configured && payload.openClaw?.reachable) {
+      if (response.ok) {
         return;
       }
     } catch {
