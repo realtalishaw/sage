@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { access, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -39,6 +39,8 @@ const SECRET_ENV_CONTENT = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT;
 const SECRET_ENV_CONTENT_B64 = process.env.SAGE_PROVISIONING_SECRET_ENV_CONTENT_B64;
 const DEPLOY_WAIT_TIMEOUT_MS = Number(process.env.SAGE_DEPLOY_WAIT_TIMEOUT_MS || 20 * 60 * 1000);
 const BUNDLE_TTL_MS = Number(process.env.SAGE_PROVISIONING_BUNDLE_TTL_MS || 30 * 60 * 1000);
+const OPENCLAW_ARCHIVE_URL =
+  process.env.SAGE_OPENCLAW_ARCHIVE_URL || 'https://codeload.github.com/realtalishaw/openclaw/tar.gz/refs/heads/main';
 const SAGE_ROOT = '/opt/sage';
 const REMOTE_ENV_FILE = '/etc/sage/openclaw.env';
 
@@ -234,7 +236,35 @@ const createProvisioningBundle = async () => {
 
   const bundleId = randomUUID();
   const tempDirPath = await mkdtemp(join(tmpdir(), 'sage-provisioning-bundle-'));
+  const payloadRoot = join(tempDirPath, 'payload');
   const bundlePath = join(tempDirPath, 'payload.tar.gz');
+  const openClawArchivePath = join(tempDirPath, 'openclaw.tar.gz');
+
+  await mkdir(join(payloadRoot, 'apps'), { recursive: true });
+  await mkdir(join(payloadRoot, 'forks', 'openclaw'), { recursive: true });
+  await mkdir(join(payloadRoot, 'scripts'), { recursive: true });
+  await mkdir(join(payloadRoot, 'infrastructure'), { recursive: true });
+
+  await cp(join(REPO_ROOT, 'apps/instance-wrapper'), join(payloadRoot, 'apps/instance-wrapper'), {
+    recursive: true,
+  });
+  await cp(join(REPO_ROOT, 'scripts/bootstrap'), join(payloadRoot, 'scripts/bootstrap'), {
+    recursive: true,
+  });
+  await cp(join(REPO_ROOT, 'infrastructure/bootstrap'), join(payloadRoot, 'infrastructure/bootstrap'), {
+    recursive: true,
+  });
+
+  await runProcess('curl', ['-fsSL', OPENCLAW_ARCHIVE_URL, '-o', openClawArchivePath], {
+    timeoutMs: 5 * 60 * 1000,
+  });
+  await runProcess(
+    'tar',
+    ['-xzf', openClawArchivePath, '-C', join(payloadRoot, 'forks', 'openclaw'), '--strip-components=1'],
+    {
+      timeoutMs: 5 * 60 * 1000,
+    },
+  );
 
   await runProcess(
     'tar',
@@ -244,7 +274,7 @@ const createProvisioningBundle = async () => {
       '-czf',
       bundlePath,
       '-C',
-      REPO_ROOT,
+      payloadRoot,
       'apps/instance-wrapper',
       'forks/openclaw',
       'scripts/bootstrap',

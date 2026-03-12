@@ -15,7 +15,6 @@ COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/provisioning-service ./apps/provisioning-service
 COPY apps/instance-wrapper ./apps/instance-wrapper
-COPY forks/openclaw ./forks/openclaw
 COPY scripts/bootstrap ./scripts/bootstrap
 COPY infrastructure/bootstrap ./infrastructure/bootstrap
 
